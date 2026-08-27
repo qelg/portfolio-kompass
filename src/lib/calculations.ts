@@ -112,6 +112,56 @@ export function moneyWeightedReturn(series: PortfolioPoint[], transactions: Tran
   return xirr(flows);
 }
 
+export function periodPerformance(
+  series: PortfolioPoint[],
+  transactions: Transaction[],
+  startDate?: string,
+  endDate?: string,
+) {
+  const pointsThroughEnd = endDate ? series.filter((point) => point.date <= endDate) : series;
+  const last = pointsThroughEnd.at(-1);
+  if (!last) return { series: [], twr: 0, mwr: null, gainEur: 0, incomeEur: 0 };
+
+  const opening = startDate
+    ? pointsThroughEnd.filter((point) => point.date < startDate).at(-1)
+    : undefined;
+  const periodTransactions = transactions.filter(
+    (transaction) => (!startDate || transaction.date >= startDate) && (!endDate || transaction.date <= endDate),
+  );
+  const periodSeries = pointsThroughEnd.filter((point) => !startDate || point.date >= startDate);
+
+  if (opening && startDate && opening.valueEur !== 0) {
+    periodSeries.unshift({ ...opening, date: startDate, netFlowEur: 0 });
+  }
+  if (endDate && periodSeries.length && periodSeries.at(-1)!.date < endDate) {
+    periodSeries.push({ ...last, date: endDate, netFlowEur: 0 });
+  }
+
+  const openingValue = opening?.valueEur ?? 0;
+  const externalFlows = periodTransactions.reduce((sum, transaction) => sum + externalFlow(transaction), 0);
+  const incomeEur = periodTransactions
+    .filter((transaction) => transaction.type === "DIVIDEND" || transaction.type === "INTEREST")
+    .reduce((sum, transaction) => sum + transaction.amountEur, 0);
+  const openingFactor = opening ? 1 + opening.twr : 1;
+  const twr = openingFactor === 0 ? 0 : (1 + last.twr) / openingFactor - 1;
+
+  const flows = periodTransactions
+    .filter((transaction) => transaction.type === "DEPOSIT" || transaction.type === "WITHDRAWAL")
+    .map((transaction) => ({ date: transaction.date, amount: -externalFlow(transaction) }));
+  if (opening && startDate && openingValue > 0) flows.unshift({ date: startDate, amount: -openingValue });
+  const closingDate = endDate ?? last.date;
+  flows.push({ date: closingDate, amount: last.valueEur });
+  const mwr = flows.length === 2 && flows[0].amount === -flows[1].amount ? 0 : xirr(flows);
+
+  return {
+    series: periodSeries,
+    twr,
+    mwr,
+    gainEur: last.valueEur - openingValue - externalFlows,
+    incomeEur,
+  };
+}
+
 export function latestPrices(prices: Price[]): Map<number, number> {
   const sorted = [...prices].sort((a, b) => a.date.localeCompare(b.date));
   return new Map(sorted.map((price) => [price.assetId, price.closeEur]));

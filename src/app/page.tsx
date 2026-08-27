@@ -1,7 +1,6 @@
 import { ArrowDownRight, ArrowUpRight, Landmark, Plus, RefreshCw, WalletCards } from "lucide-react";
 import { createAccount, createAsset, createEtfHolding, createTransaction, syncPrices } from "./actions";
-import { dashboardData, listAccounts, lookThroughAllocation } from "@/lib/repository";
-import { externalFlow } from "@/lib/calculations";
+import { dashboardData, dashboardPeriod, listAccounts, lookThroughAllocation } from "@/lib/repository";
 import type { PortfolioPoint, TransactionType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -19,14 +18,15 @@ const transactionNames: Record<TransactionType, string> = {
   FEE: "Gebühr",
 };
 
-export default function Dashboard() {
+export default async function Dashboard({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
+  const { period = "all" } = await searchParams;
   const data = dashboardData();
+  const performance = dashboardPeriod(period);
   const accounts = listAccounts();
   const lookThrough = lookThroughAllocation();
-  const netContributions = data.transactions.reduce((sum, transaction) => sum + externalFlow(transaction), 0);
-  const gainEur = data.totalValueEur - netContributions;
   const etfs = data.assets.filter((asset) => asset.type === "ETF");
   const stocks = data.assets.filter((asset) => asset.type === "STOCK");
+  const periodLabel = performance.options.find((option) => option.value === performance.selected)!.label;
 
   return (
     <main>
@@ -43,9 +43,9 @@ export default function Dashboard() {
         <div>
           <p className="eyebrow">Gesamtvermögen</p>
           <h1>{eur.format(data.totalValueEur)}</h1>
-          <div className={`change ${gainEur >= 0 ? "positive" : "negative"}`}>
-            {gainEur >= 0 ? <ArrowUpRight size={17} /> : <ArrowDownRight size={17} />}
-            {eur.format(gainEur)} Wertentwicklung & Erträge
+          <div className={`change ${performance.gainEur >= 0 ? "positive" : "negative"}`}>
+            {performance.gainEur >= 0 ? <ArrowUpRight size={17} /> : <ArrowDownRight size={17} />}
+            {eur.format(performance.gainEur)} Wertentwicklung · {periodLabel}
           </div>
         </div>
         <form action={syncPrices}>
@@ -58,17 +58,26 @@ export default function Dashboard() {
 
       {accounts.length === 0 ? <EmptyState /> : (
         <>
+          <nav className="period-picker" aria-label="Zeitraum">
+            {performance.options.map((option) => (
+              <a
+                className={option.value === performance.selected ? "active" : undefined}
+                href={option.value === "all" ? "/#portfolio" : `/?period=${option.value}#portfolio`}
+                key={option.value}
+              >{option.label}</a>
+            ))}
+          </nav>
           <section className="metric-grid">
-            <Metric label="Zeitgewichtet (TWR)" value={percent.format(data.twr)} hint="Ein- und Auszahlungen neutralisiert" tone={data.twr >= 0 ? "good" : "bad"} />
-            <Metric label="Kapitalgewichtet (MWR)" value={data.mwr === null ? "–" : percent.format(data.mwr)} hint="XIRR p. a. nach Einsatzzeitpunkt" tone={(data.mwr ?? 0) >= 0 ? "good" : "bad"} />
+            <Metric label="Zeitgewichtet (TWR)" value={percent.format(performance.twr)} hint={`Ein- und Auszahlungen neutralisiert · ${periodLabel}`} tone={performance.twr >= 0 ? "good" : "bad"} />
+            <Metric label="Kapitalgewichtet (MWR)" value={performance.mwr === null ? "–" : percent.format(performance.mwr)} hint={`XIRR p. a. · ${periodLabel}`} tone={(performance.mwr ?? 0) >= 0 ? "good" : "bad"} />
             <Metric label="Liquidität & Tagesgeld" value={eur.format(data.cashEur)} hint={`${data.totalValueEur ? percent.format(data.cashEur / data.totalValueEur) : "0 %"} des Vermögens`} />
-            <Metric label="Dividenden & Zinsen" value={eur.format(data.incomeEur)} hint="Erträge über die gesamte Laufzeit" />
+            <Metric label="Dividenden & Zinsen" value={eur.format(performance.incomeEur)} hint={`Erträge · ${periodLabel}`} />
           </section>
 
           <section className="split" id="portfolio">
             <article className="card chart-card">
-              <div className="section-head"><div><p className="eyebrow">Verlauf</p><h2>Portfoliowert</h2></div><span className="tag">EUR · Gesamt</span></div>
-              <PortfolioChart points={data.series} />
+              <div className="section-head"><div><p className="eyebrow">Verlauf</p><h2>Portfoliowert</h2></div><span className="tag">EUR · {periodLabel}</span></div>
+              <PortfolioChart points={performance.series} />
             </article>
             <article className="card allocation-card">
               <div className="section-head"><div><p className="eyebrow">Allokation</p><h2>Nach Anlage</h2></div></div>

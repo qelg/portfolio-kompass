@@ -3,6 +3,7 @@ import {
   buildPortfolioSeries,
   latestPrices,
   moneyWeightedReturn,
+  periodPerformance,
   quantities,
   remainingCostBasis,
   totalCash,
@@ -87,6 +88,35 @@ export function dashboardData() {
     .reduce((sum, transaction) => sum + transaction.amountEur, 0);
 
   return { assets, transactions, holdings, series, totalValueEur, cashEur, twr, mwr, incomeEur };
+}
+
+export function dashboardPeriod(period: string, today = new Date()) {
+  const transactions = listTransactions();
+  const series = buildPortfolioSeries(transactions, listPrices());
+  const currentYear = today.getUTCFullYear();
+  const firstDate = transactions[0]?.date;
+  const firstYear = firstDate ? Number(firstDate.slice(0, 4)) : currentYear;
+  const years = Array.from(
+    { length: Math.max(0, currentYear - firstYear) },
+    (_, index) => currentYear - index - 1,
+  );
+  const validPeriod = period === "ytd" || period === "all" || years.includes(Number(period)) ? period : "all";
+  const startDate = validPeriod === "ytd"
+    ? `${currentYear}-01-01`
+    : /^\d{4}$/.test(validPeriod) ? `${validPeriod}-01-01` : firstDate;
+  const endDate = validPeriod === "ytd"
+    ? today.toISOString().slice(0, 10)
+    : /^\d{4}$/.test(validPeriod) ? `${validPeriod}-12-31` : undefined;
+
+  return {
+    ...periodPerformance(series, transactions, startDate, endDate),
+    selected: validPeriod,
+    options: [
+      { value: "all", label: "Seit Beginn" },
+      { value: "ytd", label: "YTD" },
+      ...years.map((year) => ({ value: String(year), label: String(year) })),
+    ],
+  };
 }
 
 export function lookThroughAllocation() {
