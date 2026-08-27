@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import type { Asset } from "./types";
 
 const apiBaseUrl = "https://api.portfolio-performance.info";
@@ -24,6 +24,11 @@ type TokenResponse = {
 };
 
 let cachedAccessToken: { value: string; expiresAt: number } | undefined;
+
+export function portfolioPerformanceConfigured(): boolean {
+  const tokenPath = process.env.PORTFOLIO_PERFORMANCE_TOKEN_PATH;
+  return Boolean(tokenPath && existsSync(tokenPath));
+}
 
 export async function fetchPortfolioPerformancePrices(
   asset: Asset,

@@ -1,6 +1,6 @@
 import type { Asset } from "./types";
 import { insertPrice, latestPriceDate, listAssets } from "./repository";
-import { fetchPortfolioPerformancePrices } from "./portfolio-performance";
+import { fetchPortfolioPerformancePrices, portfolioPerformanceConfigured } from "./portfolio-performance";
 
 type TwelveDataResponse = {
   status?: "error";
@@ -12,7 +12,7 @@ export async function fetchDailyPricesEur(
   asset: Asset,
   latestDate?: string,
 ): Promise<{ date: string; closeEur: number }[]> {
-  if (process.env.PORTFOLIO_PERFORMANCE_TOKEN_PATH) {
+  if (portfolioPerformanceConfigured()) {
     try {
       return await fetchPortfolioPerformancePrices(asset, latestDate);
     } catch (error) {
@@ -49,7 +49,7 @@ export async function fetchDailyPricesEur(
 
 export async function syncAllPrices(): Promise<number> {
   let imported = 0;
-  const source = process.env.PORTFOLIO_PERFORMANCE_TOKEN_PATH ? "Portfolio Performance" : "Twelve Data";
+  const source = portfolioPerformanceConfigured() ? "Portfolio Performance" : "Twelve Data";
   for (const asset of listAssets()) {
     const prices = await fetchDailyPricesEur(asset, source === "Portfolio Performance" ? latestPriceDate(asset.id) : undefined);
     for (const price of prices) insertPrice(asset.id, price.date, price.closeEur, source);

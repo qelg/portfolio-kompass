@@ -1,6 +1,7 @@
 import { ArrowDownRight, ArrowUpRight, Landmark, Plus, RefreshCw, WalletCards } from "lucide-react";
 import { createAccount, createAsset, createEtfHolding, createTransaction, syncPrices } from "./actions";
 import { dashboardData, dashboardPeriod, listAccounts, lookThroughAllocation } from "@/lib/repository";
+import { portfolioPerformanceConfigured } from "@/lib/portfolio-performance";
 import type { PortfolioPoint, TransactionType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -24,9 +25,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const performance = dashboardPeriod(period);
   const accounts = listAccounts();
   const lookThrough = lookThroughAllocation();
-  const marketDataConfigured = Boolean(
-    process.env.PORTFOLIO_PERFORMANCE_TOKEN_PATH || process.env.TWELVE_DATA_API_KEY,
-  );
+  const marketDataConfigured = portfolioPerformanceConfigured() || Boolean(process.env.TWELVE_DATA_API_KEY);
   const etfs = data.assets.filter((asset) => asset.type === "ETF");
   const stocks = data.assets.filter((asset) => asset.type === "STOCK");
   const periodLabel = performance.options.find((option) => option.value === performance.selected)!.label;
