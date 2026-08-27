@@ -24,6 +24,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const performance = dashboardPeriod(period);
   const accounts = listAccounts();
   const lookThrough = lookThroughAllocation();
+  const marketDataConfigured = Boolean(
+    process.env.PORTFOLIO_PERFORMANCE_TOKEN_PATH || process.env.TWELVE_DATA_API_KEY,
+  );
   const etfs = data.assets.filter((asset) => asset.type === "ETF");
   const stocks = data.assets.filter((asset) => asset.type === "STOCK");
   const periodLabel = performance.options.find((option) => option.value === performance.selected)!.label;
@@ -49,10 +52,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           </div>
         </div>
         <form action={syncPrices}>
-          <button className="button ghost" type="submit" disabled={!process.env.TWELVE_DATA_API_KEY}>
+          <button className="button ghost" type="submit" disabled={!marketDataConfigured}>
             <RefreshCw size={16} /> Kurse aktualisieren
           </button>
-          {!process.env.TWELVE_DATA_API_KEY && <small>API-Key in .env.local hinterlegen</small>}
+          {!marketDataConfigured && <small>Kursdaten-Zugang konfigurieren</small>}
         </form>
       </section>
 

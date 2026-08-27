@@ -1,4 +1,4 @@
-{ lib, buildNpmPackage, importNpmLock, nodejs_24 }:
+{ lib, buildNpmPackage, importNpmLock, nodejs_24, runtimeShell }:
 
 buildNpmPackage {
   pname = "portfolio-kompass";
@@ -23,6 +23,13 @@ buildNpmPackage {
     mkdir -p $out/.next
     cp -R .next/standalone/. $out/
     cp -R .next/static $out/.next/static
+    mkdir -p $out/bin $out/libexec
+    cp scripts/portfolio-performance-auth.mjs $out/libexec/
+    cat > $out/bin/portfolio-kompass-auth <<EOF
+    #!${runtimeShell}
+    exec ${nodejs_24}/bin/node $out/libexec/portfolio-performance-auth.mjs "\$@"
+    EOF
+    chmod +x $out/bin/portfolio-kompass-auth
 
     runHook postInstall
   '';

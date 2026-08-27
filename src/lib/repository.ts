@@ -50,6 +50,13 @@ export function listPrices(): Price[] {
   ).map((row) => ({ assetId: row.asset_id, date: row.date, closeEur: row.close_eur, source: row.source }));
 }
 
+export function latestPriceDate(assetId: number): string | undefined {
+  const row = db.prepare("SELECT MAX(date) AS date FROM prices WHERE asset_id = ?").get(assetId) as
+    | { date: string | null }
+    | undefined;
+  return row?.date ?? undefined;
+}
+
 export function dashboardData() {
   const assets = listAssets();
   const transactions = listTransactions();

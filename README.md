@@ -6,7 +6,7 @@ Eine lokale Web-Anwendung zum Erfassen und Analysieren von Aktien, ETFs, Tagesge
 
 - Depots und Tagesgeldkonten
 - Käufe, Verkäufe, Ein-/Auszahlungen, Gebühren, Dividenden und Zinsen
-- historische Tageskurse über Twelve Data, inklusive Umrechnung von Fremdwährungen in EUR
+- historische Tageskurse über Twelve Data oder den persönlichen Portfolio-Performance-Zugang
 - zeitgewichtete Rendite (TWR) und kapitalgewichtete Rendite (MWR/XIRR)
 - Einstandskosten nach gleitendem Durchschnitt
 - ETF-Look-through: direkte und indirekte Aktienpositionen werden aggregiert
@@ -40,6 +40,20 @@ Der Seed löscht vorhandene lokale Daten. Die produktiven Daten liegen standardm
 ## Kursdaten
 
 In `.env.local` einen `TWELVE_DATA_API_KEY` setzen. Ticker müssen dem Twelve-Data-Format entsprechen, beispielsweise `AAPL` oder `VWCE:XETR`. Der Button **Kurse aktualisieren** importiert die gesamte verfügbare Tageshistorie und ersetzt vorhandene Werte desselben Datums.
+
+Alternativ kann der persönliche historische Kursdienst von Portfolio Performance verwendet werden. Die Anmeldung nutzt den regulären OAuth-PKCE-Ablauf und speichert ausschließlich das rotierbare Refresh-Token mit Dateimodus `0600`:
+
+```bash
+node scripts/portfolio-performance-auth.mjs data/portfolio-performance-refresh-token
+```
+
+Die ausgegebene Adresse im Browser öffnen und danach in `.env.local` konfigurieren:
+
+```dotenv
+PORTFOLIO_PERFORMANCE_TOKEN_PATH=data/portfolio-performance-refresh-token
+```
+
+Der Import sucht Wertpapiere bevorzugt per ISIN, wählt eine EUR-Notierung auf Xetra und lädt bis zu zehn Jahre Tageshistorie. Dieser Dienst ist keine dokumentierte Drittanbieter-API. Seine Nutzung erfolgt auf eigenes Risiko und nur im Rahmen der [Portfolio-Performance-Nutzungsbedingungen](https://www.portfolio-performance.app/terms); Zugangsdaten oder Kursdaten dürfen nicht an Dritte weitergegeben werden.
 
 Für einen automatischen täglichen Import `CRON_SECRET` setzen und einen externen Scheduler konfigurieren:
 

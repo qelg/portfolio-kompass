@@ -3,6 +3,7 @@ node_modules/
 data/*.db
 data/*.db-shm
 data/*.db-wal
+data/portfolio-performance-refresh-token
 .env*.local
 coverage/
 *.tsbuildinfo

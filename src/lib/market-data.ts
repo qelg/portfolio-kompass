@@ -1,5 +1,6 @@
 import type { Asset } from "./types";
-import { insertPrice, listAssets } from "./repository";
+import { insertPrice, latestPriceDate, listAssets } from "./repository";
+import { fetchPortfolioPerformancePrices } from "./portfolio-performance";
 
 type TwelveDataResponse = {
   status?: "error";
@@ -7,7 +8,19 @@ type TwelveDataResponse = {
   values?: { datetime: string; close: string }[];
 };
 
-export async function fetchDailyPricesEur(asset: Asset): Promise<{ date: string; closeEur: number }[]> {
+export async function fetchDailyPricesEur(
+  asset: Asset,
+  latestDate?: string,
+): Promise<{ date: string; closeEur: number }[]> {
+  if (process.env.PORTFOLIO_PERFORMANCE_TOKEN_PATH) {
+    try {
+      return await fetchPortfolioPerformancePrices(asset, latestDate);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Unbekannter Fehler";
+      throw new Error(`Kursimport für ${asset.type} „${asset.name}“ (${asset.ticker}) fehlgeschlagen: ${reason}`);
+    }
+  }
+
   const apiKey = process.env.TWELVE_DATA_API_KEY;
   if (!apiKey) throw new Error("TWELVE_DATA_API_KEY ist nicht konfiguriert.");
 
@@ -36,9 +49,10 @@ export async function fetchDailyPricesEur(asset: Asset): Promise<{ date: string;
 
 export async function syncAllPrices(): Promise<number> {
   let imported = 0;
+  const source = process.env.PORTFOLIO_PERFORMANCE_TOKEN_PATH ? "Portfolio Performance" : "Twelve Data";
   for (const asset of listAssets()) {
-    const prices = await fetchDailyPricesEur(asset);
-    for (const price of prices) insertPrice(asset.id, price.date, price.closeEur, "Twelve Data");
+    const prices = await fetchDailyPricesEur(asset, source === "Portfolio Performance" ? latestPriceDate(asset.id) : undefined);
+    for (const price of prices) insertPrice(asset.id, price.date, price.closeEur, source);
     imported += prices.length;
   }
   return imported;
