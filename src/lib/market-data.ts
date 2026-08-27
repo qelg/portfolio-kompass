@@ -11,22 +11,27 @@ export async function fetchDailyPricesEur(asset: Asset): Promise<{ date: string;
   const apiKey = process.env.TWELVE_DATA_API_KEY;
   if (!apiKey) throw new Error("TWELVE_DATA_API_KEY ist nicht konfiguriert.");
 
-  const prices = await fetchSeries(asset.ticker, apiKey);
-  if (asset.currency === "EUR") return prices.map((price) => ({ date: price.date, closeEur: price.value }));
+  try {
+    const prices = await fetchSeries(asset.ticker, apiKey);
+    if (asset.currency === "EUR") return prices.map((price) => ({ date: price.date, closeEur: price.value }));
 
-  const exchangeRates = await fetchSeries(`${asset.currency}/EUR`, apiKey);
-  const sortedRates = exchangeRates.sort((a, b) => a.date.localeCompare(b.date));
-  let rateIndex = 0;
-  let currentRate: number | undefined;
-  return prices
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .flatMap((price) => {
-      while (rateIndex < sortedRates.length && sortedRates[rateIndex].date <= price.date) {
-        currentRate = sortedRates[rateIndex].value;
-        rateIndex += 1;
-      }
-      return currentRate ? [{ date: price.date, closeEur: price.value * currentRate }] : [];
-    });
+    const exchangeRates = await fetchSeries(`${asset.currency}/EUR`, apiKey);
+    const sortedRates = exchangeRates.sort((a, b) => a.date.localeCompare(b.date));
+    let rateIndex = 0;
+    let currentRate: number | undefined;
+    return prices
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .flatMap((price) => {
+        while (rateIndex < sortedRates.length && sortedRates[rateIndex].date <= price.date) {
+          currentRate = sortedRates[rateIndex].value;
+          rateIndex += 1;
+        }
+        return currentRate ? [{ date: price.date, closeEur: price.value * currentRate }] : [];
+      });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "Unbekannter Fehler";
+    throw new Error(`Kursimport für ${asset.type} „${asset.name}“ (${asset.ticker}) fehlgeschlagen: ${reason}`);
+  }
 }
 
 export async function syncAllPrices(): Promise<number> {
@@ -47,10 +52,13 @@ async function fetchSeries(symbol: string, apiKey: string): Promise<{ date: stri
   url.searchParams.set("order", "ASC");
   url.searchParams.set("apikey", apiKey);
   const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(`Kurs-API antwortet mit HTTP ${response.status}.`);
-  const payload = (await response.json()) as TwelveDataResponse;
-  if (payload.status === "error" || !payload.values) {
-    throw new Error(payload.message || `Keine Kursdaten für ${symbol} erhalten.`);
+  const payload = (await response.json().catch(() => undefined)) as TwelveDataResponse | undefined;
+  if (!response.ok) {
+    const reason = payload?.message ? `${payload.message} (HTTP ${response.status})` : `HTTP ${response.status}`;
+    throw new Error(`Twelve Data für ${symbol}: ${reason}`);
+  }
+  if (!payload || payload.status === "error" || !payload.values) {
+    throw new Error(`Twelve Data für ${symbol}: ${payload?.message || "Keine Kursdaten erhalten."}`);
   }
   return payload.values.map((row) => ({ date: row.datetime.slice(0, 10), value: Number(row.close) }));
 }
