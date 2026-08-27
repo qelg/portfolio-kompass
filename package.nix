@@ -13,6 +13,7 @@ buildNpmPackage {
   env = {
     DATABASE_PATH = ":memory:";
     NEXT_TELEMETRY_DISABLED = "1";
+    PORTFOLIO_BASE_PATH = "/portfolio";
   };
 
   installPhase = ''
