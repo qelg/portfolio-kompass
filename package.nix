@@ -1,0 +1,28 @@
+{ lib, buildNpmPackage, importNpmLock, nodejs_24 }:
+
+buildNpmPackage {
+  pname = "portfolio-kompass";
+  version = "0.1.0";
+  src = lib.cleanSource ./.;
+
+  nodejs = nodejs_24;
+  npmDeps = importNpmLock { npmRoot = ./.; };
+  npmConfigHook = importNpmLock.npmConfigHook;
+  npmBuildScript = "build";
+
+  env = {
+    NODE_ENV = "production";
+    NEXT_TELEMETRY_DISABLED = "1";
+  };
+
+  installPhase = ''
+    runHook preInstall
+
+    test -f .next/standalone/server.js
+    mkdir -p $out/.next
+    cp -R .next/standalone/. $out/
+    cp -R .next/static $out/.next/static
+
+    runHook postInstall
+  '';
+}
