@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# This repository has no backing service or per-thread authentication to restore.
+printf 'Portfolio Kompass orb is ready.\n'

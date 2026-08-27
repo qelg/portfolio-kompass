@@ -6,3 +6,4 @@ data/*.db-wal
 .env*.local
 coverage/
 *.tsbuildinfo
+.amp/portals/*
