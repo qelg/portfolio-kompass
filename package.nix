@@ -11,7 +11,6 @@ buildNpmPackage {
   npmBuildScript = "build";
 
   env = {
-    NODE_ENV = "production";
     NEXT_TELEMETRY_DISABLED = "1";
   };
 
