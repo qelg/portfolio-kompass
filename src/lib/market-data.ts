@@ -1,0 +1,56 @@
+import type { Asset } from "./types";
+import { insertPrice, listAssets } from "./repository";
+
+type TwelveDataResponse = {
+  status?: "error";
+  message?: string;
+  values?: { datetime: string; close: string }[];
+};
+
+export async function fetchDailyPricesEur(asset: Asset): Promise<{ date: string; closeEur: number }[]> {
+  const apiKey = process.env.TWELVE_DATA_API_KEY;
+  if (!apiKey) throw new Error("TWELVE_DATA_API_KEY ist nicht konfiguriert.");
+
+  const prices = await fetchSeries(asset.ticker, apiKey);
+  if (asset.currency === "EUR") return prices.map((price) => ({ date: price.date, closeEur: price.value }));
+
+  const exchangeRates = await fetchSeries(`${asset.currency}/EUR`, apiKey);
+  const sortedRates = exchangeRates.sort((a, b) => a.date.localeCompare(b.date));
+  let rateIndex = 0;
+  let currentRate: number | undefined;
+  return prices
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .flatMap((price) => {
+      while (rateIndex < sortedRates.length && sortedRates[rateIndex].date <= price.date) {
+        currentRate = sortedRates[rateIndex].value;
+        rateIndex += 1;
+      }
+      return currentRate ? [{ date: price.date, closeEur: price.value * currentRate }] : [];
+    });
+}
+
+export async function syncAllPrices(): Promise<number> {
+  let imported = 0;
+  for (const asset of listAssets()) {
+    const prices = await fetchDailyPricesEur(asset);
+    for (const price of prices) insertPrice(asset.id, price.date, price.closeEur, "Twelve Data");
+    imported += prices.length;
+  }
+  return imported;
+}
+
+async function fetchSeries(symbol: string, apiKey: string): Promise<{ date: string; value: number }[]> {
+  const url = new URL("https://api.twelvedata.com/time_series");
+  url.searchParams.set("symbol", symbol);
+  url.searchParams.set("interval", "1day");
+  url.searchParams.set("outputsize", "5000");
+  url.searchParams.set("order", "ASC");
+  url.searchParams.set("apikey", apiKey);
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error(`Kurs-API antwortet mit HTTP ${response.status}.`);
+  const payload = (await response.json()) as TwelveDataResponse;
+  if (payload.status === "error" || !payload.values) {
+    throw new Error(payload.message || `Keine Kursdaten für ${symbol} erhalten.`);
+  }
+  return payload.values.map((row) => ({ date: row.datetime.slice(0, 10), value: Number(row.close) }));
+}
