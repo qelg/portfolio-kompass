@@ -11,6 +11,7 @@ buildNpmPackage {
   npmBuildScript = "build";
 
   env = {
+    DATABASE_PATH = ":memory:";
     NEXT_TELEMETRY_DISABLED = "1";
   };
 
