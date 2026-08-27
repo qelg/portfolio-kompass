@@ -2,7 +2,8 @@
 
 ## Development
 
-- Use Node.js 22 or newer and the pnpm version pinned in `package.json`.
+- The default Nix development shell provides the repository's Node.js and pnpm toolchain. Use `nix develop` outside an Amp orb.
+- Orb login shells automatically load the same environment with `nix print-dev-env` when their working directory is this repository.
 - Install dependencies with `pnpm install --frozen-lockfile`.
 - Verify changes with `pnpm test` and `pnpm build`.
 - `TWELVE_DATA_API_KEY` is optional for local development; only market-price imports need it.

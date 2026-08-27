@@ -10,5 +10,14 @@
     in
     {
       packages.${system}.default = pkgs.callPackage ./package.nix { };
+
+      devShells.${system}.default = pkgs.mkShell {
+        packages = with pkgs; [
+          nodejs_24
+          pnpm_11
+        ];
+
+        env.NEXT_TELEMETRY_DISABLED = "1";
+      };
     };
 }

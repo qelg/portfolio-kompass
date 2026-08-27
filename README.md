@@ -22,6 +22,13 @@ cp .env.example .env.local
 pnpm dev
 ```
 
+Alternativ stellt der Nix-Development-Shell Node.js und pnpm in den passenden Versionen bereit:
+
+```bash
+nix develop
+pnpm install --frozen-lockfile
+```
+
 Ohne API-Key lässt sich alles außer dem Kursimport nutzen. Für ein gefülltes Beispielportfolio:
 
 ```bash
