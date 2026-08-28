@@ -1,4 +1,4 @@
-import type { Asset, PortfolioPoint, Price, Transaction } from "./types";
+import type { Asset, HoldingRow, PortfolioPoint, Price, Transaction } from "./types";
 
 export function cashChange(transaction: Transaction): number {
   switch (transaction.type) {
@@ -53,14 +53,44 @@ export function buildPortfolioSeries(
 
     let value = cash;
     for (const [assetId, units] of quantity) value += units * (latestPrice.get(assetId) ?? 0);
+    const totalQuantity = [...quantity.values()].reduce((sum, units) => sum + units, 0);
 
     if (index > 0 && previousValue !== 0) {
       cumulativeTwr *= 1 + (value - flow) / previousValue - 1;
     }
     previousValue = value;
 
-    return { date, valueEur: value, netFlowEur: flow, twr: cumulativeTwr - 1 };
+    return { date, valueEur: value, totalQuantity, netFlowEur: flow, twr: cumulativeTwr - 1 };
   });
+}
+
+export function portfolioSnapshot(assets: Asset[], transactions: Transaction[], prices: Price[]) {
+  const priceByAsset = latestPrices(prices);
+  const quantityByAsset = quantities(transactions);
+  const cashEur = totalCash(transactions);
+  const holdings: HoldingRow[] = assets
+    .map((asset) => {
+      const quantity = quantityByAsset.get(asset.id) ?? 0;
+      const priceEur = priceByAsset.get(asset.id) ?? 0;
+      const costEur = remainingCostBasis(transactions, asset.id);
+      const valueEur = quantity * priceEur;
+      const gainEur = valueEur - costEur;
+      return {
+        asset,
+        quantity,
+        priceEur,
+        valueEur,
+        costEur,
+        gainEur,
+        gainPercent: costEur ? gainEur / costEur : null,
+        allocation: 0,
+      };
+    })
+    .filter((holding) => Math.abs(holding.quantity) > 0.00000001);
+
+  const totalValueEur = holdings.reduce((sum, holding) => sum + holding.valueEur, cashEur);
+  for (const holding of holdings) holding.allocation = totalValueEur ? holding.valueEur / totalValueEur : 0;
+  return { holdings, totalValueEur, cashEur };
 }
 
 export function xirr(cashFlows: { date: string; amount: number }[]): number | null {
@@ -120,7 +150,7 @@ export function periodPerformance(
 ) {
   const pointsThroughEnd = endDate ? series.filter((point) => point.date <= endDate) : series;
   const last = pointsThroughEnd.at(-1);
-  if (!last) return { series: [], twr: 0, mwr: null, gainEur: 0, incomeEur: 0 };
+  if (!last) return { series: [], transactions: [], twr: 0, mwr: null, gainEur: 0, incomeEur: 0 };
 
   const opening = startDate
     ? pointsThroughEnd.filter((point) => point.date < startDate).at(-1)
@@ -155,6 +185,7 @@ export function periodPerformance(
 
   return {
     series: periodSeries,
+    transactions: periodTransactions,
     twr,
     mwr,
     gainEur: last.valueEur - openingValue - externalFlows,

@@ -3,7 +3,8 @@ import Link from "next/link";
 import { createAccount, createAsset, createEtfHolding, createTransaction, syncPrices } from "./actions";
 import { dashboardData, dashboardPeriod, listAccounts, lookThroughAllocation } from "@/lib/repository";
 import { portfolioPerformanceConfigured } from "@/lib/portfolio-performance";
-import type { PortfolioPoint, TransactionType } from "@/lib/types";
+import type { TransactionType } from "@/lib/types";
+import { PortfolioChart } from "./portfolio-chart";
 
 export const dynamic = "force-dynamic";
 
@@ -20,16 +21,16 @@ const transactionNames: Record<TransactionType, string> = {
   FEE: "Gebühr",
 };
 
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
-  const { period = "all" } = await searchParams;
+export default async function Dashboard({ searchParams }: { searchParams: Promise<{ period?: string; start?: string; end?: string; point?: string }> }) {
+  const { period = "all", start, end, point } = await searchParams;
   const data = dashboardData();
-  const performance = dashboardPeriod(period);
+  const performance = dashboardPeriod(period, start, end, point);
   const accounts = listAccounts();
   const lookThrough = lookThroughAllocation();
   const marketDataConfigured = portfolioPerformanceConfigured() || Boolean(process.env.TWELVE_DATA_API_KEY);
   const etfs = data.assets.filter((asset) => asset.type === "ETF");
   const stocks = data.assets.filter((asset) => asset.type === "STOCK");
-  const periodLabel = performance.options.find((option) => option.value === performance.selected)!.label;
+  const periodLabel = performance.label;
 
   return (
     <main>
@@ -61,15 +62,22 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
       {accounts.length === 0 ? <EmptyState /> : (
         <>
-          <nav className="period-picker" aria-label="Zeitraum">
-            {performance.options.map((option) => (
-              <Link
-                className={option.value === performance.selected ? "active" : undefined}
-                href={option.value === "all" ? "/#portfolio" : `/?period=${option.value}#portfolio`}
-                key={option.value}
-              >{option.label}</Link>
-            ))}
-          </nav>
+          <div className="period-controls">
+            <nav className="period-picker" aria-label="Schnellauswahl Zeitraum">
+              {performance.options.map((option) => (
+                <Link
+                  className={option.value === performance.selected ? "active" : undefined}
+                  href={option.value === "all" ? "/#portfolio" : `/?period=${option.value}#portfolio`}
+                  key={option.value}
+                >{option.label}</Link>
+              ))}
+            </nav>
+            <form className={`date-range ${performance.selected === "custom" ? "active" : ""}`} action="/">
+              <label>Von<input name="start" type="date" defaultValue={performance.selected === "custom" ? performance.startDate : ""} /></label>
+              <label>Bis<input name="end" type="date" defaultValue={performance.selected === "custom" ? performance.endDate : ""} /></label>
+              <button className="button ghost" type="submit">Anwenden</button>
+            </form>
+          </div>
           <section className="metric-grid">
             <Metric label="Zeitgewichtet (TWR)" value={percent.format(performance.twr)} hint={`Ein- und Auszahlungen neutralisiert · ${periodLabel}`} tone={performance.twr >= 0 ? "good" : "bad"} />
             <Metric label="Kapitalgewichtet (MWR)" value={performance.mwr === null ? "–" : percent.format(performance.mwr)} hint={`XIRR p. a. · ${periodLabel}`} tone={(performance.mwr ?? 0) >= 0 ? "good" : "bad"} />
@@ -80,7 +88,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <section className="split" id="portfolio">
             <article className="card chart-card">
               <div className="section-head"><div><p className="eyebrow">Verlauf</p><h2>Portfoliowert</h2></div><span className="tag">EUR · {periodLabel}</span></div>
-              <PortfolioChart points={performance.series} />
+              <PortfolioChart points={performance.series} selectedDate={performance.selectedPointDate} />
             </article>
             <article className="card allocation-card">
               <div className="section-head"><div><p className="eyebrow">Allokation</p><h2>Nach Anlage</h2></div></div>
@@ -96,9 +104,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           </section>
 
           <section className="card" id="holdings">
-            <div className="section-head"><div><p className="eyebrow">Positionen</p><h2>Meine Anlagen</h2></div><span className="subtle">{data.holdings.length} Positionen</span></div>
+            <div className="section-head"><div><p className="eyebrow">Positionen</p><h2>Meine Anlagen</h2></div><span className="subtle">{performance.holdings.length} Positionen · {performance.holdingsLabel}</span></div>
             <div className="table-wrap"><table><thead><tr><th>Anlage</th><th>Stück</th><th>Kurs</th><th>Wert</th><th>Gewinn / Verlust</th><th>Anteil</th></tr></thead>
-              <tbody>{data.holdings.map((holding) => <tr key={holding.asset.id}>
+              <tbody>{performance.holdings.map((holding) => <tr key={holding.asset.id}>
                 <td><div className="asset"><span className={`asset-icon ${holding.asset.type.toLowerCase()}`}>{holding.asset.type === "ETF" ? "E" : holding.asset.name[0]}</span><div><strong>{holding.asset.name}</strong><small>{holding.asset.ticker} · {holding.asset.type}</small></div></div></td>
                 <td>{number.format(holding.quantity)}</td><td>{eur.format(holding.priceEur)}</td><td><strong>{eur.format(holding.valueEur)}</strong></td>
                 <td className={holding.gainEur >= 0 ? "positive-text" : "negative-text"}>{holding.gainEur >= 0 ? "+" : ""}{eur.format(holding.gainEur)}<small>{holding.gainPercent === null ? "–" : percent.format(holding.gainPercent)}</small></td>
@@ -118,11 +126,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           </section>
 
           <section className="card" id="activity">
-            <div className="section-head"><div><p className="eyebrow">Journal</p><h2>Letzte Aktivitäten</h2></div></div>
-            <div className="activity-list">{[...data.transactions].reverse().slice(0, 8).map((transaction) => {
+            <div className="section-head"><div><p className="eyebrow">Journal</p><h2>Letzte Aktivitäten</h2></div><span className="subtle">{performance.transactions.length} Buchungen · {periodLabel}</span></div>
+            {performance.transactions.length ? <div className="activity-list">{[...performance.transactions].reverse().slice(0, 8).map((transaction) => {
               const asset = data.assets.find((item) => item.id === transaction.assetId);
               return <div className="activity" key={transaction.id}><span className="activity-icon">{transaction.type === "INTEREST" ? "%" : transaction.type === "DIVIDEND" ? "D" : "↕"}</span><div><strong>{transactionNames[transaction.type]}{asset ? ` · ${asset.name}` : ""}</strong><small>{new Intl.DateTimeFormat("de-DE").format(new Date(`${transaction.date}T12:00:00`))}{transaction.note ? ` · ${transaction.note}` : ""}</small></div><b>{eur.format(transaction.amountEur)}</b></div>;
-            })}</div>
+            })}</div> : <p className="empty-copy">In diesem Zeitraum gibt es keine Buchungen.</p>}
           </section>
         </>
       )}
@@ -139,17 +147,6 @@ function Metric({ label, value, hint, tone }: { label: string; value: string; hi
 
 function Legend({ color, name, value }: { color: string; name: string; value: number }) {
   return <div><span className="dot" style={{ background: color }} /><span>{name}</span><b>{percent.format(value)}</b></div>;
-}
-
-function PortfolioChart({ points }: { points: PortfolioPoint[] }) {
-  if (points.length < 2) return <div className="chart-empty">Mit Kursen und Buchungen entsteht hier dein Verlauf.</div>;
-  const width = 800, height = 260, pad = 18;
-  const values = points.map((point) => point.valueEur);
-  const min = Math.min(...values) * 0.96, max = Math.max(...values) * 1.02;
-  const coordinates = points.map((point, index) => ({ x: pad + index / (points.length - 1) * (width - 2 * pad), y: height - pad - (point.valueEur - min) / (max - min || 1) * (height - 2 * pad) }));
-  const line = coordinates.map((point, index) => `${index ? "L" : "M"}${point.x},${point.y}`).join(" ");
-  const area = `${line} L${coordinates.at(-1)!.x},${height} L${coordinates[0].x},${height} Z`;
-  return <div className="chart"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Entwicklung des Portfoliowerts"><defs><linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#c5ff65" stopOpacity=".42" /><stop offset="1" stopColor="#c5ff65" stopOpacity="0" /></linearGradient></defs><path d={area} fill="url(#area)" /><path d={line} fill="none" stroke="#193d33" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg><div className="chart-labels"><span>{new Intl.DateTimeFormat("de-DE", { month: "short", year: "2-digit" }).format(new Date(points[0].date))}</span><span>{new Intl.DateTimeFormat("de-DE", { month: "short", year: "2-digit" }).format(new Date(points.at(-1)!.date))}</span></div></div>;
 }
 
 function EmptyState() {

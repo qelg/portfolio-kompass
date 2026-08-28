@@ -1,14 +1,11 @@
 import { all, db } from "./db";
 import {
   buildPortfolioSeries,
-  latestPrices,
   moneyWeightedReturn,
   periodPerformance,
-  quantities,
-  remainingCostBasis,
-  totalCash,
+  portfolioSnapshot,
 } from "./calculations";
-import type { Account, Asset, HoldingRow, Price, Transaction } from "./types";
+import type { Account, Asset, Price, Transaction } from "./types";
 
 type DbTransaction = {
   id: number;
@@ -61,32 +58,7 @@ export function dashboardData() {
   const assets = listAssets();
   const transactions = listTransactions();
   const prices = listPrices();
-  const priceByAsset = latestPrices(prices);
-  const quantityByAsset = quantities(transactions);
-  const cashEur = totalCash(transactions);
-
-  const holdings: HoldingRow[] = assets
-    .map((asset) => {
-      const quantity = quantityByAsset.get(asset.id) ?? 0;
-      const priceEur = priceByAsset.get(asset.id) ?? 0;
-      const costEur = remainingCostBasis(transactions, asset.id);
-      const valueEur = quantity * priceEur;
-      const gainEur = valueEur - costEur;
-      return {
-        asset,
-        quantity,
-        priceEur,
-        valueEur,
-        costEur,
-        gainEur,
-        gainPercent: costEur ? gainEur / costEur : null,
-        allocation: 0,
-      };
-    })
-    .filter((holding) => Math.abs(holding.quantity) > 0.00000001);
-
-  const totalValueEur = holdings.reduce((sum, holding) => sum + holding.valueEur, cashEur);
-  for (const holding of holdings) holding.allocation = totalValueEur ? holding.valueEur / totalValueEur : 0;
+  const { holdings, totalValueEur, cashEur } = portfolioSnapshot(assets, transactions, prices);
   const series = buildPortfolioSeries(transactions, prices);
   const twr = series.at(-1)?.twr ?? 0;
   const mwr = moneyWeightedReturn(series, transactions);
@@ -97,9 +69,11 @@ export function dashboardData() {
   return { assets, transactions, holdings, series, totalValueEur, cashEur, twr, mwr, incomeEur };
 }
 
-export function dashboardPeriod(period: string, today = new Date()) {
+export function dashboardPeriod(period: string, requestedStart?: string, requestedEnd?: string, requestedPoint?: string, today = new Date()) {
+  const assets = listAssets();
   const transactions = listTransactions();
-  const series = buildPortfolioSeries(transactions, listPrices());
+  const prices = listPrices();
+  const series = buildPortfolioSeries(transactions, prices);
   const currentYear = today.getUTCFullYear();
   const firstDate = transactions[0]?.date;
   const firstYear = firstDate ? Number(firstDate.slice(0, 4)) : currentYear;
@@ -107,23 +81,63 @@ export function dashboardPeriod(period: string, today = new Date()) {
     { length: Math.max(0, currentYear - firstYear) },
     (_, index) => currentYear - index - 1,
   );
-  const validPeriod = period === "ytd" || period === "all" || years.includes(Number(period)) ? period : "all";
-  const startDate = validPeriod === "ytd"
-    ? `${currentYear}-01-01`
-    : /^\d{4}$/.test(validPeriod) ? `${validPeriod}-01-01` : firstDate;
-  const endDate = validPeriod === "ytd"
-    ? today.toISOString().slice(0, 10)
-    : /^\d{4}$/.test(validPeriod) ? `${validPeriod}-12-31` : undefined;
+  const customStart = validDate(requestedStart);
+  const customEnd = validDate(requestedEnd);
+  const validCustomRange = (customStart || customEnd) && (!customStart || !customEnd || customStart <= customEnd);
+  const validPeriod = validCustomRange
+    ? "custom"
+    : period === "ytd" || period === "all" || years.includes(Number(period)) ? period : "all";
+  const startDate = validCustomRange
+    ? customStart
+    : validPeriod === "ytd"
+      ? `${currentYear}-01-01`
+      : /^\d{4}$/.test(validPeriod) ? `${validPeriod}-01-01` : firstDate;
+  const endDate = validCustomRange
+    ? customEnd
+    : validPeriod === "ytd"
+      ? today.toISOString().slice(0, 10)
+      : /^\d{4}$/.test(validPeriod) ? `${validPeriod}-12-31` : undefined;
+  const label = validPeriod === "custom"
+    ? dateRangeLabel(startDate, endDate)
+    : validPeriod === "ytd" ? "YTD" : validPeriod === "all" ? "Seit Beginn" : validPeriod;
+  const performance = periodPerformance(series, transactions, startDate, endDate);
+  const validPoint = validDate(requestedPoint);
+  const selectedPointDate = validPoint && performance.series.some((point) => point.date === validPoint) ? validPoint : undefined;
+  const snapshotDate = selectedPointDate ?? endDate;
+  const snapshotTransactions = snapshotDate ? transactions.filter((transaction) => transaction.date <= snapshotDate) : transactions;
+  const snapshotPrices = snapshotDate ? prices.filter((price) => price.date <= snapshotDate) : prices;
 
   return {
-    ...periodPerformance(series, transactions, startDate, endDate),
+    ...performance,
+    ...portfolioSnapshot(assets, snapshotTransactions, snapshotPrices),
     selected: validPeriod,
+    selectedPointDate,
+    startDate,
+    endDate,
+    label,
+    holdingsLabel: selectedPointDate ? `Stand ${formatDate(selectedPointDate)}` : label,
     options: [
       { value: "all", label: "Seit Beginn" },
       { value: "ytd", label: "YTD" },
       ...years.map((year) => ({ value: String(year), label: String(year) })),
     ],
   };
+}
+
+function validDate(value?: string): string | undefined {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value ? undefined : value;
+}
+
+function dateRangeLabel(startDate?: string, endDate?: string): string {
+  if (startDate && endDate) return `${formatDate(startDate)}–${formatDate(endDate)}`;
+  if (startDate) return `Ab ${formatDate(startDate)}`;
+  return `Bis ${formatDate(endDate!)}`;
+}
+
+function formatDate(date: string): string {
+  return new Intl.DateTimeFormat("de-DE").format(new Date(`${date}T12:00:00Z`));
 }
 
 export function lookThroughAllocation() {

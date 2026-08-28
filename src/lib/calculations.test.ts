@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildPortfolioSeries, periodPerformance, remainingCostBasis, xirr } from "./calculations";
-import type { Transaction } from "./types";
+import { buildPortfolioSeries, periodPerformance, portfolioSnapshot, remainingCostBasis, xirr } from "./calculations";
+import type { Asset, Transaction } from "./types";
 
 function transaction(overrides: Partial<Transaction>): Transaction {
   return {
@@ -29,6 +29,16 @@ describe("portfolio calculations", () => {
     );
     expect(series.at(-1)?.valueEur).toBe(210);
     expect(series.at(-1)?.twr).toBeCloseTo(0.1, 10);
+  });
+
+  it("tracks the total number of held shares at every point", () => {
+    const series = buildPortfolioSeries([
+      transaction({ date: "2025-01-01", assetId: 1, type: "BUY", quantity: 2, amountEur: 100 }),
+      transaction({ date: "2025-02-01", assetId: 2, type: "BUY", quantity: 1.5, amountEur: 100 }),
+      transaction({ date: "2025-03-01", assetId: 1, type: "SELL", quantity: 0.5, amountEur: 25 }),
+    ], []);
+
+    expect(series.map((point) => point.totalQuantity)).toEqual([2, 3.5, 3]);
   });
 
   it("calculates annualized money-weighted return", () => {
@@ -62,5 +72,38 @@ describe("portfolio calculations", () => {
     expect(result.twr).toBeCloseTo(0.1, 10);
     expect(result.gainEur).toBe(10);
     expect(result.incomeEur).toBe(10);
+  });
+
+  it("supports arbitrary date boundaries", () => {
+    const transactions = [
+      transaction({ date: "2025-01-01", type: "DEPOSIT", amountEur: 100 }),
+      transaction({ date: "2025-03-15", type: "INTEREST", amountEur: 5 }),
+      transaction({ date: "2025-08-01", type: "INTEREST", amountEur: 10 }),
+    ];
+    const result = periodPerformance(buildPortfolioSeries(transactions, []), transactions, "2025-02-10", "2025-06-20");
+
+    expect(result.series[0]).toMatchObject({ date: "2025-02-10", valueEur: 100 });
+    expect(result.series.at(-1)).toMatchObject({ date: "2025-06-20", valueEur: 105 });
+    expect(result.gainEur).toBe(5);
+    expect(result.transactions.map((item) => item.date)).toEqual(["2025-03-15"]);
+  });
+
+  it("builds holdings from transactions and prices through a selected date", () => {
+    const asset: Asset = { id: 1, name: "Test ETF", ticker: "TEST", isin: null, type: "ETF", currency: "EUR" };
+    const transactions = [
+      transaction({ date: "2024-01-02", assetId: 1, type: "BUY", quantity: 2, amountEur: 100 }),
+      transaction({ date: "2025-01-02", assetId: 1, type: "BUY", quantity: 1, amountEur: 60 }),
+    ];
+    const prices = [
+      { assetId: 1, date: "2024-12-31", closeEur: 55, source: "Test" },
+      { assetId: 1, date: "2025-12-31", closeEur: 70, source: "Test" },
+    ];
+    const snapshot = portfolioSnapshot(
+      [asset],
+      transactions.filter((item) => item.date <= "2024-12-31"),
+      prices.filter((item) => item.date <= "2024-12-31"),
+    );
+
+    expect(snapshot.holdings[0]).toMatchObject({ quantity: 2, priceEur: 55, valueEur: 110, gainEur: 10 });
   });
 });

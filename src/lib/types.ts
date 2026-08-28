@@ -57,6 +57,7 @@ export interface HoldingRow {
 export interface PortfolioPoint {
   date: string;
   valueEur: number;
+  totalQuantity: number;
   netFlowEur: number;
   twr: number;
 }
