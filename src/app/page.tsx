@@ -1,4 +1,5 @@
 import { ArrowDownRight, ArrowUpRight, Landmark, Plus, RefreshCw, WalletCards } from "lucide-react";
+import Link from "next/link";
 import { createAccount, createAsset, createEtfHolding, createTransaction, syncPrices } from "./actions";
 import { dashboardData, dashboardPeriod, listAccounts, lookThroughAllocation } from "@/lib/repository";
 import { portfolioPerformanceConfigured } from "@/lib/portfolio-performance";
@@ -62,11 +63,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <>
           <nav className="period-picker" aria-label="Zeitraum">
             {performance.options.map((option) => (
-              <a
+              <Link
                 className={option.value === performance.selected ? "active" : undefined}
                 href={option.value === "all" ? "/#portfolio" : `/?period=${option.value}#portfolio`}
                 key={option.value}
-              >{option.label}</a>
+              >{option.label}</Link>
             ))}
           </nav>
           <section className="metric-grid">
