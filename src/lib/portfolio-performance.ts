@@ -4,6 +4,10 @@ import type { Asset } from "./types";
 const apiBaseUrl = "https://api.portfolio-performance.info";
 const tokenUrl = "https://accounts.portfolio-performance.info/oidc/token";
 const defaultClientId = "d6d0voq1w081sxty0qq7a";
+const successorIsinByPredecessor: Record<string, string> = {
+  // Lyxor Core DAX was merged 1:1 into Amundi Core DAX on 2023-12-08.
+  LU0378438732: "LU2611732046",
+};
 
 type SearchResult = {
   description: string;
@@ -38,7 +42,8 @@ export async function fetchPortfolioPerformancePrices(
   if (!tokenPath) throw new Error("PORTFOLIO_PERFORMANCE_TOKEN_PATH ist nicht konfiguriert.");
 
   const searchUrl = new URL("/v1/search", apiBaseUrl);
-  if (asset.isin) searchUrl.searchParams.set("isin", asset.isin);
+  const searchIsin = asset.isin ? (successorIsinByPredecessor[asset.isin] ?? asset.isin) : undefined;
+  if (searchIsin) searchUrl.searchParams.set("isin", searchIsin);
   else searchUrl.searchParams.set("symbol", asset.ticker);
 
   const searchResponse = await fetch(searchUrl, { cache: "no-store" });

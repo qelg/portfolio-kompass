@@ -81,4 +81,43 @@ describe("market data errors", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
     await fs.rm(directory, { recursive: true });
   });
+
+  it("uses the successor ISIN for the merged Lyxor Core DAX ETF", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "portfolio-kompass-"));
+    const tokenPath = path.join(directory, "refresh-token");
+    await fs.writeFile(tokenPath, "refresh-token\n");
+    vi.stubEnv("PORTFOLIO_PERFORMANCE_TOKEN_PATH", tokenPath);
+
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(input instanceof Request ? input.url : input.toString());
+      if (url.pathname === "/v1/search") {
+        expect(url.searchParams.get("isin")).toBe("LU2611732046");
+        return Response.json([
+          {
+            description: "Amundi Core DAX UCITS ETF Dist",
+            isin: "LU2611732046",
+            markets: [{ currency: "EUR", exchange: "XETR", symbol: "C001.DE" }],
+          },
+        ]);
+      }
+      if (url.pathname === "/oidc/token") {
+        return Response.json({ access_token: "access-token", expires_in: 3600 });
+      }
+      if (url.pathname === "/v1/candle") {
+        return Response.json({ s: "ok", t: [1704067200], c: [123.45] });
+      }
+      throw new Error(`Unerwarteter Testaufruf: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      fetchDailyPricesEur({
+        ...asset,
+        name: "Lyxor Core DAX (DR) UCITS ETF",
+        ticker: "ETF001:XETR",
+        isin: "LU0378438732",
+      }),
+    ).resolves.toEqual([{ date: "2024-01-01", closeEur: 123.45 }]);
+    await fs.rm(directory, { recursive: true });
+  });
 });

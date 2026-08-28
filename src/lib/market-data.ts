@@ -49,12 +49,21 @@ export async function fetchDailyPricesEur(
 
 export async function syncAllPrices(): Promise<number> {
   let imported = 0;
+  const errors: string[] = [];
   const source = portfolioPerformanceConfigured() ? "Portfolio Performance" : "Twelve Data";
   for (const asset of listAssets()) {
-    const prices = await fetchDailyPricesEur(asset, source === "Portfolio Performance" ? latestPriceDate(asset.id) : undefined);
-    for (const price of prices) insertPrice(asset.id, price.date, price.closeEur, source);
-    imported += prices.length;
+    try {
+      const prices = await fetchDailyPricesEur(
+        asset,
+        source === "Portfolio Performance" ? latestPriceDate(asset.id) : undefined,
+      );
+      for (const price of prices) insertPrice(asset.id, price.date, price.closeEur, source);
+      imported += prices.length;
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : `Kursimport für „${asset.name}“ fehlgeschlagen.`);
+    }
   }
+  if (errors.length) throw new Error(errors.join("\n"));
   return imported;
 }
 
