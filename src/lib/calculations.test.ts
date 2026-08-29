@@ -106,4 +106,65 @@ describe("portfolio calculations", () => {
 
     expect(snapshot.holdings[0]).toMatchObject({ quantity: 2, priceEur: 55, valueEur: 110, gainEur: 10 });
   });
+
+  it("derives a price from a transaction when no market price exists", () => {
+    const asset: Asset = { id: 1, name: "Test Aktie", ticker: "TEST", isin: null, type: "STOCK", currency: "EUR" };
+    const transactions = [
+      transaction({ assetId: 1, type: "BUY", quantity: 2, amountEur: 100 }),
+    ];
+
+    const snapshot = portfolioSnapshot([asset], transactions, []);
+
+    expect(snapshot.holdings[0]).toMatchObject({ priceEur: 50, priceDate: "2025-01-01", priceSource: "Kauf/Verkauf", valueEur: 100 });
+  });
+
+  it("reports the date of the latest available price", () => {
+    const asset: Asset = { id: 1, name: "Test ETF", ticker: "TEST", isin: null, type: "ETF", currency: "EUR" };
+    const transactions = [
+      transaction({ assetId: 1, type: "BUY", quantity: 2, amountEur: 100 }),
+    ];
+    const prices = [
+      { assetId: 1, date: "2025-01-03", closeEur: 50, source: "Test" },
+      { assetId: 1, date: "2025-01-06", closeEur: 52, source: "Test" },
+    ];
+
+    const snapshot = portfolioSnapshot([asset], transactions, prices);
+
+    expect(snapshot.holdings[0]).toMatchObject({ priceEur: 52, priceDate: "2025-01-06", priceSource: "Test" });
+  });
+
+  it("uses the quantity-weighted transaction price after the latest market price", () => {
+    const asset: Asset = { id: 1, name: "Test Aktie", ticker: "TEST", isin: null, type: "STOCK", currency: "EUR" };
+    const transactions = [
+      transaction({ id: 1, date: "2025-01-04", assetId: 1, type: "BUY", quantity: 2, amountEur: 220 }),
+      transaction({ id: 2, date: "2025-01-04", assetId: 1, type: "BUY", quantity: 1, amountEur: 130 }),
+    ];
+    const prices = [
+      { assetId: 1, date: "2025-01-03", closeEur: 100, source: "Test" },
+    ];
+
+    const snapshot = portfolioSnapshot([asset], transactions, prices);
+
+    expect(snapshot.holdings[0]).toMatchObject({
+      priceEur: 350 / 3,
+      priceDate: "2025-01-04",
+      priceSource: "Kauf/Verkauf",
+      valueEur: 350,
+    });
+    expect(buildPortfolioSeries(transactions, prices).at(-1)?.valueEur).toBe(0);
+  });
+
+  it("prefers a market price on the same day as a transaction", () => {
+    const asset: Asset = { id: 1, name: "Test ETF", ticker: "TEST", isin: null, type: "ETF", currency: "EUR" };
+    const transactions = [
+      transaction({ date: "2025-01-03", assetId: 1, type: "BUY", quantity: 2, amountEur: 220 }),
+    ];
+    const prices = [
+      { assetId: 1, date: "2025-01-03", closeEur: 105, source: "Test" },
+    ];
+
+    const snapshot = portfolioSnapshot([asset], transactions, prices);
+
+    expect(snapshot.holdings[0]).toMatchObject({ priceEur: 105, priceDate: "2025-01-03", priceSource: "Test" });
+  });
 });

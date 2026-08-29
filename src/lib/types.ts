@@ -47,6 +47,8 @@ export interface HoldingRow {
   asset: Asset;
   quantity: number;
   priceEur: number;
+  priceDate: string | null;
+  priceSource: string | null;
   valueEur: number;
   costEur: number;
   gainEur: number;

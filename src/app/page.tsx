@@ -31,6 +31,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const etfs = data.assets.filter((asset) => asset.type === "ETF");
   const stocks = data.assets.filter((asset) => asset.type === "STOCK");
   const periodLabel = performance.label;
+  const holdingsWithoutPrice = performance.holdings.filter((holding) => holding.priceDate === null);
 
   return (
     <main>
@@ -105,12 +106,15 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
           <section className="card" id="holdings">
             <div className="section-head"><div><p className="eyebrow">Positionen</p><h2>Meine Anlagen</h2></div><span className="subtle">{performance.holdings.length} Positionen · {performance.holdingsLabel}</span></div>
+            {holdingsWithoutPrice.length > 0 && <p className="note">Für {holdingsWithoutPrice.length === 1 ? "eine Position fehlen" : `${holdingsWithoutPrice.length} Positionen fehlen`} Kursdaten. {holdingsWithoutPrice.length === 1 ? "Sie ist" : "Sie sind"} nicht im Gesamtwert enthalten.</p>}
             <div className="table-wrap"><table><thead><tr><th>Anlage</th><th>Stück</th><th>Kurs</th><th>Wert</th><th>Gewinn / Verlust</th><th>Anteil</th></tr></thead>
               <tbody>{performance.holdings.map((holding) => <tr key={holding.asset.id}>
                 <td><div className="asset"><span className={`asset-icon ${holding.asset.type.toLowerCase()}`}>{holding.asset.type === "ETF" ? "E" : holding.asset.name[0]}</span><div><strong>{holding.asset.name}</strong><small>{holding.asset.ticker} · {holding.asset.type}</small></div></div></td>
-                <td>{number.format(holding.quantity)}</td><td>{eur.format(holding.priceEur)}</td><td><strong>{eur.format(holding.valueEur)}</strong></td>
-                <td className={holding.gainEur >= 0 ? "positive-text" : "negative-text"}>{holding.gainEur >= 0 ? "+" : ""}{eur.format(holding.gainEur)}<small>{holding.gainPercent === null ? "–" : percent.format(holding.gainPercent)}</small></td>
-                <td>{percent.format(holding.allocation)}</td>
+                <td>{number.format(holding.quantity)}</td>
+                <td>{holding.priceDate === null ? <>–<small>Keine Kursdaten</small></> : <>{eur.format(holding.priceEur)}<small>{holding.priceSource === "Kauf/Verkauf" ? "Aus Kauf/Verkauf · " : ""}Stand {formatDate(holding.priceDate)}</small></>}</td>
+                <td><strong>{holding.priceDate === null ? "–" : eur.format(holding.valueEur)}</strong></td>
+                <td className={holding.priceDate === null ? undefined : holding.gainEur >= 0 ? "positive-text" : "negative-text"}>{holding.priceDate === null ? "–" : <>{holding.gainEur >= 0 ? "+" : ""}{eur.format(holding.gainEur)}<small>{holding.gainPercent === null ? "–" : percent.format(holding.gainPercent)}</small></>}</td>
+                <td>{holding.priceDate === null ? "–" : percent.format(holding.allocation)}</td>
               </tr>)}</tbody></table></div>
           </section>
 
@@ -140,6 +144,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 }
 
 const palette = ["#193d33", "#c5ff65", "#5b7c70", "#e9b949", "#8ebcae"];
+
+function formatDate(date: string) {
+  return new Intl.DateTimeFormat("de-DE").format(new Date(`${date}T12:00:00Z`));
+}
 
 function Metric({ label, value, hint, tone }: { label: string; value: string; hint: string; tone?: "good" | "bad" }) {
   return <article className="metric"><span>{label}</span><strong className={tone}>{value}</strong><small>{hint}</small></article>;

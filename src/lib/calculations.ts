@@ -26,9 +26,10 @@ export function buildPortfolioSeries(
   transactions: Transaction[],
   prices: Price[],
 ): PortfolioPoint[] {
-  const dates = [...new Set([...transactions.map((item) => item.date), ...prices.map((item) => item.date)])].sort();
+  const valuationPrices = pricesWithTransactionFallback(transactions, prices);
+  const dates = [...new Set([...transactions.map((item) => item.date), ...valuationPrices.map((item) => item.date)])].sort();
   const transactionsByDate = groupBy(transactions, (item) => item.date);
-  const pricesByDate = groupBy(prices, (item) => item.date);
+  const pricesByDate = groupBy(valuationPrices, (item) => item.date);
   const quantity = new Map<number, number>();
   const latestPrice = new Map<number, number>();
   let cash = 0;
@@ -65,13 +66,14 @@ export function buildPortfolioSeries(
 }
 
 export function portfolioSnapshot(assets: Asset[], transactions: Transaction[], prices: Price[]) {
-  const priceByAsset = latestPrices(prices);
+  const priceByAsset = latestPrices(pricesWithTransactionFallback(transactions, prices));
   const quantityByAsset = quantities(transactions);
   const cashEur = totalCash(transactions);
   const holdings: HoldingRow[] = assets
     .map((asset) => {
       const quantity = quantityByAsset.get(asset.id) ?? 0;
-      const priceEur = priceByAsset.get(asset.id) ?? 0;
+      const price = priceByAsset.get(asset.id);
+      const priceEur = price?.closeEur ?? 0;
       const costEur = remainingCostBasis(transactions, asset.id);
       const valueEur = quantity * priceEur;
       const gainEur = valueEur - costEur;
@@ -79,6 +81,8 @@ export function portfolioSnapshot(assets: Asset[], transactions: Transaction[], 
         asset,
         quantity,
         priceEur,
+        priceDate: price?.date ?? null,
+        priceSource: price?.source ?? null,
         valueEur,
         costEur,
         gainEur,
@@ -193,9 +197,43 @@ export function periodPerformance(
   };
 }
 
-export function latestPrices(prices: Price[]): Map<number, number> {
+export function latestPrices(prices: Price[]): Map<number, Price> {
   const sorted = [...prices].sort((a, b) => a.date.localeCompare(b.date));
-  return new Map(sorted.map((price) => [price.assetId, price.closeEur]));
+  return new Map(sorted.map((price) => [price.assetId, price]));
+}
+
+function pricesWithTransactionFallback(transactions: Transaction[], prices: Price[]): Price[] {
+  const marketPriceDates = new Set(prices.map((price) => `${price.assetId}:${price.date}`));
+  const trades = new Map<string, { assetId: number; date: string; amountEur: number; quantity: number }>();
+
+  for (const transaction of transactions) {
+    if (
+      transaction.assetId === null
+      || (transaction.type !== "BUY" && transaction.type !== "SELL")
+      || transaction.quantity <= 0
+    ) continue;
+    const key = `${transaction.assetId}:${transaction.date}`;
+    if (marketPriceDates.has(key)) continue;
+    const trade = trades.get(key) ?? {
+      assetId: transaction.assetId,
+      date: transaction.date,
+      amountEur: 0,
+      quantity: 0,
+    };
+    trade.amountEur += transaction.amountEur;
+    trade.quantity += transaction.quantity;
+    trades.set(key, trade);
+  }
+
+  return [
+    ...prices,
+    ...[...trades.values()].map((trade) => ({
+      assetId: trade.assetId,
+      date: trade.date,
+      closeEur: trade.amountEur / trade.quantity,
+      source: "Kauf/Verkauf",
+    })),
+  ];
 }
 
 export function quantities(transactions: Transaction[]): Map<number, number> {
