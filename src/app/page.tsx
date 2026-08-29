@@ -72,7 +72,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                 >{option.label}</Link>
               ))}
             </nav>
-            <form className={`date-range ${performance.selected === "custom" ? "active" : ""}`} action="/">
+            <form className={`date-range ${performance.selected === "custom" ? "active" : ""}`}>
               <label>Von<input name="start" type="date" defaultValue={performance.selected === "custom" ? performance.startDate : ""} /></label>
               <label>Bis<input name="end" type="date" defaultValue={performance.selected === "custom" ? performance.endDate : ""} /></label>
               <button className="button ghost" type="submit">Anwenden</button>
