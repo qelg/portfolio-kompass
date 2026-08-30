@@ -4,6 +4,7 @@ import { createAccount, createAsset, createEtfHolding, createTransaction, syncPr
 import { dashboardData, dashboardPeriod, listAccounts, lookThroughAllocation } from "@/lib/repository";
 import { portfolioPerformanceConfigured } from "@/lib/portfolio-performance";
 import type { TransactionType } from "@/lib/types";
+import { DeleteTransactionButton } from "./delete-transaction-button";
 import { PortfolioChart } from "./portfolio-chart";
 
 export const dynamic = "force-dynamic";
@@ -133,7 +134,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <div className="section-head"><div><p className="eyebrow">Journal</p><h2>Letzte Aktivitäten</h2></div><span className="subtle">{performance.transactions.length} Buchungen · {periodLabel}</span></div>
             {performance.transactions.length ? <div className="activity-list">{[...performance.transactions].reverse().slice(0, 8).map((transaction) => {
               const asset = data.assets.find((item) => item.id === transaction.assetId);
-              return <div className="activity" key={transaction.id}><span className="activity-icon">{transaction.type === "INTEREST" ? "%" : transaction.type === "DIVIDEND" ? "D" : "↕"}</span><div><strong>{transactionNames[transaction.type]}{asset ? ` · ${asset.name}` : ""}</strong><small>{new Intl.DateTimeFormat("de-DE").format(new Date(`${transaction.date}T12:00:00`))}{transaction.note ? ` · ${transaction.note}` : ""}</small></div><b>{eur.format(transaction.amountEur)}</b></div>;
+              return <div className="activity" key={transaction.id}><span className="activity-icon">{transaction.type === "INTEREST" ? "%" : transaction.type === "DIVIDEND" ? "D" : "↕"}</span><div><strong>{transactionNames[transaction.type]}{asset ? ` · ${asset.name}` : ""}</strong><small>{new Intl.DateTimeFormat("de-DE").format(new Date(`${transaction.date}T12:00:00`))}{transaction.note ? ` · ${transaction.note}` : ""}</small></div><b>{eur.format(transaction.amountEur)}</b><DeleteTransactionButton transactionId={transaction.id} /></div>;
             })}</div> : <p className="empty-copy">In diesem Zeitraum gibt es keine Buchungen.</p>}
           </section>
         </>

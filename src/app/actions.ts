@@ -61,6 +61,15 @@ export async function createTransaction(formData: FormData) {
   revalidatePath("/");
 }
 
+export async function deleteTransaction(formData: FormData) {
+  const { transactionId } = z
+    .object({ transactionId: z.coerce.number().int().positive() })
+    .parse(Object.fromEntries(formData));
+  const result = db.prepare("DELETE FROM transactions WHERE id = ?").run(transactionId);
+  if (result.changes === 0) throw new Error("Buchung nicht gefunden.");
+  revalidatePath("/");
+}
+
 export async function createEtfHolding(formData: FormData) {
   const input = z
     .object({
