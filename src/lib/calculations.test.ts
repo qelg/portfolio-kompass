@@ -61,6 +61,24 @@ describe("portfolio calculations", () => {
     expect(result.mwr).toBeCloseTo(0.1, 7);
   });
 
+  it("builds cash-flow-neutral euro, TWR, and MWR chart series", () => {
+    const transactions = [
+      transaction({ id: 1, date: "2025-01-01", type: "DEPOSIT", amountEur: 100 }),
+      transaction({ id: 2, date: "2025-07-01", type: "INTEREST", amountEur: 10 }),
+      transaction({ id: 3, date: "2025-10-01", type: "DEPOSIT", amountEur: 100 }),
+      transaction({ id: 4, date: "2025-11-01", type: "WITHDRAWAL", amountEur: 25 }),
+      transaction({ id: 5, date: "2025-12-31", type: "INTEREST", amountEur: 10 }),
+    ];
+    const result = periodPerformance(buildPortfolioSeries(transactions, []), transactions);
+
+    expect(result.depositsEur).toBe(200);
+    expect(result.withdrawalsEur).toBe(25);
+    expect(result.series.map((point) => point.gainEur)).toEqual([0, 10, 10, 10, 20]);
+    expect(result.series[2].periodTwr).toBeCloseTo(result.series[1].periodTwr, 10);
+    expect(result.series.at(-1)?.periodTwr).toBeCloseTo(result.twr, 10);
+    expect(result.series.at(-1)?.periodMwr).toBeCloseTo(result.mwr!, 7);
+  });
+
   it("annualizes TWR and MWR for periods longer than one year", () => {
     const transactions = [
       transaction({ date: "2023-01-01", type: "DEPOSIT", amountEur: 100 }),
@@ -112,6 +130,18 @@ describe("portfolio calculations", () => {
     expect(result.series.at(-1)).toMatchObject({ date: "2025-06-20", valueEur: 105 });
     expect(result.gainEur).toBe(5);
     expect(result.transactions.map((item) => item.date)).toEqual(["2025-03-15"]);
+  });
+
+  it("does not count a deposit on the period boundary as a loss", () => {
+    const transactions = [
+      transaction({ id: 1, date: "2024-12-31", type: "DEPOSIT", amountEur: 100 }),
+      transaction({ id: 2, date: "2025-01-01", type: "DEPOSIT", amountEur: 50 }),
+      transaction({ id: 3, date: "2025-02-01", type: "INTEREST", amountEur: 15 }),
+    ];
+    const result = periodPerformance(buildPortfolioSeries(transactions, []), transactions, "2025-01-01", "2025-12-31");
+
+    expect(result.series[0]).toMatchObject({ date: "2025-01-01", valueEur: 150, gainEur: 0 });
+    expect(result.series.at(-1)).toMatchObject({ date: "2025-12-31", valueEur: 165, gainEur: 15 });
   });
 
   it("builds holdings from transactions and prices through a selected date", () => {

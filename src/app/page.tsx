@@ -91,11 +91,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <Metric label={`Kapitalgewichtet (MWR${performance.returnsAnnualized ? " p. a." : ""})`} value={performance.mwr === null ? "–" : percent.format(performance.mwr)} hint={`Interner Zinsfuß${performance.returnsAnnualized ? " p. a." : ""} · ${periodLabel}`} tone={(performance.mwr ?? 0) >= 0 ? "good" : "bad"} />
             <Metric label="Liquidität & Tagesgeld" value={eur.format(data.cashEur)} hint={`${data.totalValueEur ? percent.format(data.cashEur / data.totalValueEur) : "0 %"} des Vermögens`} />
             <Metric label="Dividenden & Zinsen" value={eur.format(performance.incomeEur)} hint={`Erträge · ${periodLabel}`} />
+            <Metric label="Einzahlungen / Auszahlungen" value={`${eur.format(performance.depositsEur)} / ${eur.format(performance.withdrawalsEur)}`} hint={`Externe Geldflüsse · ${periodLabel}`} />
           </section>
 
           <section className="split" id="portfolio">
             <article className="card chart-card">
-              <div className="section-head"><div><p className="eyebrow">Verlauf</p><h2>Portfoliowert</h2></div><span className="tag">EUR · {periodLabel}</span></div>
+              <div className="section-head"><div><p className="eyebrow">Verlauf</p><h2>Portfolioentwicklung</h2></div><span className="tag">{periodLabel}</span></div>
               <PortfolioChart points={performance.series} selectedDate={performance.selectedPointDate} />
             </article>
             <article className="card allocation-card">

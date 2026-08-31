@@ -71,3 +71,9 @@ export interface PortfolioPoint {
   netFlowEur: number;
   twr: number;
 }
+
+export interface PerformancePoint extends PortfolioPoint {
+  gainEur: number;
+  periodTwr: number;
+  periodMwr: number | null;
+}

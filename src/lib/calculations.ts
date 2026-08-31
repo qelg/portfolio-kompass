@@ -1,4 +1,4 @@
-import type { Asset, HoldingRow, MissingPricePeriod, PortfolioPoint, Price, Transaction } from "./types";
+import type { Asset, HoldingRow, MissingPricePeriod, PerformancePoint, PortfolioPoint, Price, Transaction } from "./types";
 
 const yearMs = 365.2425 * 24 * 60 * 60 * 1000;
 const dayMs = 24 * 60 * 60 * 1000;
@@ -235,6 +235,51 @@ export function moneyWeightedReturn(series: PortfolioPoint[], transactions: Tran
     : returnForPeriod(annualRate, first.date, last.date);
 }
 
+export function buildPerformanceSeries(
+  series: PortfolioPoint[],
+  transactions: Transaction[],
+  openingValue: number,
+  openingTwr: number,
+): PerformancePoint[] {
+  const firstDate = series[0]?.date;
+  const openingFactor = 1 + openingTwr;
+  const sortedTransactions = [...transactions].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+  const investmentFlows: { date: string; amount: number }[] = [];
+  let transactionIndex = 0;
+  let netFlows = 0;
+  if (openingValue > 0 && firstDate) investmentFlows.push({ date: firstDate, amount: -openingValue });
+
+  return series.map((point) => {
+    while (sortedTransactions[transactionIndex]?.date <= point.date) {
+      const transaction = sortedTransactions[transactionIndex];
+      const flow = externalFlow(transaction);
+      netFlows += flow;
+      if (flow !== 0) investmentFlows.push({ date: transaction.date, amount: -flow });
+      transactionIndex += 1;
+    }
+
+    return {
+      ...point,
+      gainEur: point.valueEur - openingValue - netFlows,
+      periodTwr: openingFactor === 0 ? 0 : (1 + point.twr) / openingFactor - 1,
+      periodMwr: cumulativeMoneyWeightedReturn(investmentFlows, point),
+    };
+  });
+}
+
+function cumulativeMoneyWeightedReturn(
+  investmentFlows: { date: string; amount: number }[],
+  point: PortfolioPoint,
+): number | null {
+  if (point.valueEur <= 0 || !investmentFlows.some((flow) => flow.amount < 0)) return null;
+  const flows = [...investmentFlows, { date: point.date, amount: point.valueEur }];
+  if (Math.abs(flows.reduce((sum, flow) => sum + flow.amount, 0)) < 0.000001) return 0;
+  const firstDate = flows[0].date;
+  if (firstDate === point.date) return null;
+  const annualRate = xirr(flows);
+  return annualRate === null ? null : returnForPeriod(annualRate, firstDate, point.date);
+}
+
 export function periodPerformance(
   series: PortfolioPoint[],
   transactions: Transaction[],
@@ -243,7 +288,10 @@ export function periodPerformance(
 ) {
   const pointsThroughEnd = endDate ? series.filter((point) => point.date <= endDate) : series;
   const last = pointsThroughEnd.at(-1);
-  if (!last) return { series: [], transactions: [], twr: 0, mwr: null, returnsAnnualized: false, gainEur: 0, incomeEur: 0 };
+  if (!last) return {
+    series: [], transactions: [], twr: 0, mwr: null, returnsAnnualized: false,
+    gainEur: 0, incomeEur: 0, depositsEur: 0, withdrawalsEur: 0,
+  };
 
   const opening = startDate
     ? pointsThroughEnd.filter((point) => point.date < startDate).at(-1)
@@ -253,7 +301,7 @@ export function periodPerformance(
   );
   const periodSeries = pointsThroughEnd.filter((point) => !startDate || point.date >= startDate);
 
-  if (opening && startDate && opening.valueEur !== 0) {
+  if (opening && startDate && opening.valueEur !== 0 && periodSeries[0]?.date !== startDate) {
     periodSeries.unshift({ ...opening, date: startDate, netFlowEur: 0 });
   }
   if (endDate && periodSeries.length && periodSeries.at(-1)!.date < endDate) {
@@ -264,6 +312,12 @@ export function periodPerformance(
   const externalFlows = periodTransactions.reduce((sum, transaction) => sum + externalFlow(transaction), 0);
   const incomeEur = periodTransactions
     .filter((transaction) => transaction.type === "DIVIDEND" || transaction.type === "INTEREST")
+    .reduce((sum, transaction) => sum + transaction.amountEur, 0);
+  const depositsEur = periodTransactions
+    .filter((transaction) => transaction.type === "DEPOSIT")
+    .reduce((sum, transaction) => sum + transaction.amountEur, 0);
+  const withdrawalsEur = periodTransactions
+    .filter((transaction) => transaction.type === "WITHDRAWAL")
     .reduce((sum, transaction) => sum + transaction.amountEur, 0);
   const openingFactor = opening ? 1 + opening.twr : 1;
   const periodTwr = openingFactor === 0 ? 0 : (1 + last.twr) / openingFactor - 1;
@@ -283,13 +337,15 @@ export function periodPerformance(
     : returnForPeriod(annualMwr, periodStart, closingDate);
 
   return {
-    series: periodSeries,
+    series: buildPerformanceSeries(periodSeries, periodTransactions, openingValue, opening?.twr ?? 0),
     transactions: periodTransactions,
     twr,
     mwr,
     returnsAnnualized,
     gainEur: last.valueEur - openingValue - externalFlows,
     incomeEur,
+    depositsEur,
+    withdrawalsEur,
   };
 }
 
