@@ -81,8 +81,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             </form>
           </div>
           <section className="metric-grid">
-            <Metric label="Zeitgewichtet (TWR)" value={percent.format(performance.twr)} hint={`Ein- und Auszahlungen neutralisiert · ${periodLabel}`} tone={performance.twr >= 0 ? "good" : "bad"} />
-            <Metric label="Kapitalgewichtet (MWR)" value={performance.mwr === null ? "–" : percent.format(performance.mwr)} hint={`XIRR p. a. · ${periodLabel}`} tone={(performance.mwr ?? 0) >= 0 ? "good" : "bad"} />
+            <Metric label={`Zeitgewichtet (TWR${performance.returnsAnnualized ? " p. a." : ""})`} value={percent.format(performance.twr)} hint={`Ein- und Auszahlungen neutralisiert · ${periodLabel}`} tone={performance.twr >= 0 ? "good" : "bad"} />
+            <Metric label={`Kapitalgewichtet (MWR${performance.returnsAnnualized ? " p. a." : ""})`} value={performance.mwr === null ? "–" : percent.format(performance.mwr)} hint={`Interner Zinsfuß${performance.returnsAnnualized ? " p. a." : ""} · ${periodLabel}`} tone={(performance.mwr ?? 0) >= 0 ? "good" : "bad"} />
             <Metric label="Liquidität & Tagesgeld" value={eur.format(data.cashEur)} hint={`${data.totalValueEur ? percent.format(data.cashEur / data.totalValueEur) : "0 %"} des Vermögens`} />
             <Metric label="Dividenden & Zinsen" value={eur.format(performance.incomeEur)} hint={`Erträge · ${periodLabel}`} />
           </section>

@@ -49,6 +49,32 @@ describe("portfolio calculations", () => {
     expect(result).toBeCloseTo(0.1, 3);
   });
 
+  it("keeps TWR and MWR cumulative for periods shorter than one year", () => {
+    const transactions = [
+      transaction({ date: "2025-01-01", type: "DEPOSIT", amountEur: 100 }),
+      transaction({ date: "2025-07-01", type: "INTEREST", amountEur: 10 }),
+    ];
+    const result = periodPerformance(buildPortfolioSeries(transactions, []), transactions);
+
+    expect(result.returnsAnnualized).toBe(false);
+    expect(result.twr).toBeCloseTo(0.1, 10);
+    expect(result.mwr).toBeCloseTo(0.1, 7);
+  });
+
+  it("annualizes TWR and MWR for periods longer than one year", () => {
+    const transactions = [
+      transaction({ date: "2023-01-01", type: "DEPOSIT", amountEur: 100 }),
+      transaction({ date: "2025-01-01", type: "INTEREST", amountEur: 21 }),
+    ];
+    const result = periodPerformance(buildPortfolioSeries(transactions, []), transactions);
+    const years = 731 / 365.2425;
+    const expectedAnnualReturn = 1.21 ** (1 / years) - 1;
+
+    expect(result.returnsAnnualized).toBe(true);
+    expect(result.twr).toBeCloseTo(expectedAnnualReturn, 10);
+    expect(result.mwr).toBeCloseTo(expectedAnnualReturn, 7);
+  });
+
   it("keeps a moving-average cost basis through partial sales and later buys", () => {
     const transactions = [
       transaction({ assetId: 2, type: "BUY", quantity: 10, amountEur: 1000 }),

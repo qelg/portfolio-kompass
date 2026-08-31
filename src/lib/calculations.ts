@@ -1,5 +1,7 @@
 import type { Asset, HoldingRow, PortfolioPoint, Price, Transaction } from "./types";
 
+const yearMs = 365.2425 * 24 * 60 * 60 * 1000;
+
 export function cashChange(transaction: Transaction): number {
   switch (transaction.type) {
     case "DEPOSIT":
@@ -102,7 +104,6 @@ export function xirr(cashFlows: { date: string; amount: number }[]): number | nu
   const sorted = [...cashFlows].sort((a, b) => a.date.localeCompare(b.date));
   if (!sorted.some((flow) => flow.amount < 0) || !sorted.some((flow) => flow.amount > 0)) return null;
   const start = new Date(`${sorted[0].date}T00:00:00Z`).getTime();
-  const yearMs = 365.2425 * 24 * 60 * 60 * 1000;
   const npv = (rate: number) =>
     sorted.reduce((sum, flow) => {
       const years = (new Date(`${flow.date}T00:00:00Z`).getTime() - start) / yearMs;
@@ -137,13 +138,18 @@ export function xirr(cashFlows: { date: string; amount: number }[]): number | nu
 }
 
 export function moneyWeightedReturn(series: PortfolioPoint[], transactions: Transaction[]): number | null {
+  const first = series[0];
   const last = series.at(-1);
-  if (!last || last.valueEur <= 0) return null;
+  if (!first || !last || last.valueEur <= 0) return null;
   const flows = transactions
     .filter((transaction) => transaction.type === "DEPOSIT" || transaction.type === "WITHDRAWAL")
     .map((transaction) => ({ date: transaction.date, amount: -externalFlow(transaction) }));
   flows.push({ date: last.date, amount: last.valueEur });
-  return xirr(flows);
+  const annualRate = xirr(flows);
+  if (annualRate === null) return null;
+  return yearsBetween(first.date, last.date) > 1
+    ? annualRate
+    : returnForPeriod(annualRate, first.date, last.date);
 }
 
 export function periodPerformance(
@@ -154,7 +160,7 @@ export function periodPerformance(
 ) {
   const pointsThroughEnd = endDate ? series.filter((point) => point.date <= endDate) : series;
   const last = pointsThroughEnd.at(-1);
-  if (!last) return { series: [], transactions: [], twr: 0, mwr: null, gainEur: 0, incomeEur: 0 };
+  if (!last) return { series: [], transactions: [], twr: 0, mwr: null, returnsAnnualized: false, gainEur: 0, incomeEur: 0 };
 
   const opening = startDate
     ? pointsThroughEnd.filter((point) => point.date < startDate).at(-1)
@@ -177,7 +183,7 @@ export function periodPerformance(
     .filter((transaction) => transaction.type === "DIVIDEND" || transaction.type === "INTEREST")
     .reduce((sum, transaction) => sum + transaction.amountEur, 0);
   const openingFactor = opening ? 1 + opening.twr : 1;
-  const twr = openingFactor === 0 ? 0 : (1 + last.twr) / openingFactor - 1;
+  const periodTwr = openingFactor === 0 ? 0 : (1 + last.twr) / openingFactor - 1;
 
   const flows = periodTransactions
     .filter((transaction) => transaction.type === "DEPOSIT" || transaction.type === "WITHDRAWAL")
@@ -185,16 +191,40 @@ export function periodPerformance(
   if (opening && startDate && openingValue > 0) flows.unshift({ date: startDate, amount: -openingValue });
   const closingDate = endDate ?? last.date;
   flows.push({ date: closingDate, amount: last.valueEur });
-  const mwr = flows.length === 2 && flows[0].amount === -flows[1].amount ? 0 : xirr(flows);
+  const annualMwr = flows.length === 2 && flows[0].amount === -flows[1].amount ? 0 : xirr(flows);
+  const periodStart = periodSeries[0]?.date ?? closingDate;
+  const returnsAnnualized = yearsBetween(periodStart, closingDate) > 1;
+  const twr = returnsAnnualized ? annualizeReturn(periodTwr, periodStart, closingDate) : periodTwr;
+  const mwr = annualMwr === null || returnsAnnualized
+    ? annualMwr
+    : returnForPeriod(annualMwr, periodStart, closingDate);
 
   return {
     series: periodSeries,
     transactions: periodTransactions,
     twr,
     mwr,
+    returnsAnnualized,
     gainEur: last.valueEur - openingValue - externalFlows,
     incomeEur,
   };
+}
+
+function yearsBetween(startDate: string, endDate: string): number {
+  return (
+    new Date(`${endDate}T00:00:00Z`).getTime()
+    - new Date(`${startDate}T00:00:00Z`).getTime()
+  ) / yearMs;
+}
+
+function annualizeReturn(periodReturn: number, startDate: string, endDate: string): number {
+  const years = yearsBetween(startDate, endDate);
+  return years > 0 && periodReturn > -1 ? (1 + periodReturn) ** (1 / years) - 1 : periodReturn;
+}
+
+function returnForPeriod(annualRate: number, startDate: string, endDate: string): number {
+  const years = yearsBetween(startDate, endDate);
+  return years > 0 ? (1 + annualRate) ** years - 1 : annualRate;
 }
 
 export function latestPrices(prices: Price[]): Map<number, Price> {
