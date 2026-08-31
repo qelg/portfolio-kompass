@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPortfolioSeries, periodPerformance, portfolioSnapshot, remainingCostBasis, xirr } from "./calculations";
+import { buildPortfolioSeries, missingPricePeriods, periodPerformance, portfolioSnapshot, remainingCostBasis, xirr } from "./calculations";
 import type { Asset, Transaction } from "./types";
 
 function transaction(overrides: Partial<Transaction>): Transaction {
@@ -192,5 +192,36 @@ describe("portfolio calculations", () => {
     const snapshot = portfolioSnapshot([asset], transactions, prices);
 
     expect(snapshot.holdings[0]).toMatchObject({ priceEur: 105, priceDate: "2025-01-03", priceSource: "Test" });
+  });
+
+  it("prioritizes price gaps while an asset was held and suggests their midpoint", () => {
+    const assets: Asset[] = [
+      { id: 1, name: "Lange Lücke", ticker: "LONG", isin: null, type: "STOCK", currency: "EUR" },
+      { id: 2, name: "Kurze Lücke", ticker: "SHORT", isin: null, type: "ETF", currency: "EUR" },
+    ];
+    const transactions = [
+      transaction({ id: 1, date: "2025-01-01", assetId: 1, type: "BUY", quantity: 1, amountEur: 100 }),
+      transaction({ id: 2, date: "2025-01-01", assetId: 2, type: "BUY", quantity: 1, amountEur: 100 }),
+    ];
+    const prices = [
+      { assetId: 1, date: "2025-01-11", closeEur: 110, source: "Test" },
+      { assetId: 2, date: "2025-01-06", closeEur: 110, source: "Test" },
+    ];
+
+    expect(missingPricePeriods(assets, transactions, prices, "2025-01-20")).toMatchObject([
+      { asset: { id: 1 }, startDate: "2025-01-12", endDate: "2025-01-20", days: 9, suggestedDate: "2025-01-16" },
+      { asset: { id: 1 }, startDate: "2025-01-02", endDate: "2025-01-10", days: 9, suggestedDate: "2025-01-06" },
+      { asset: { id: 2 }, startDate: "2025-01-07", endDate: "2025-01-20", days: 14, suggestedDate: "2025-01-13" },
+    ].sort((a, b) => b.days - a.days || a.startDate.localeCompare(b.startDate)));
+  });
+
+  it("ignores gaps shorter than a week and dates outside closed holding periods", () => {
+    const asset: Asset = { id: 1, name: "Test Aktie", ticker: "TEST", isin: null, type: "STOCK", currency: "EUR" };
+    const transactions = [
+      transaction({ id: 1, date: "2025-01-01", assetId: 1, type: "BUY", quantity: 1, amountEur: 100 }),
+      transaction({ id: 2, date: "2025-01-06", assetId: 1, type: "SELL", quantity: 1, amountEur: 105 }),
+    ];
+
+    expect(missingPricePeriods([asset], transactions, [], "2025-02-01")).toEqual([]);
   });
 });

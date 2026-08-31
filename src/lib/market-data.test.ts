@@ -43,6 +43,21 @@ describe("market data errors", () => {
     );
   });
 
+  it("limits a targeted Twelve Data request to the requested date range", async () => {
+    vi.stubEnv("TWELVE_DATA_API_KEY", "test-key");
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(input instanceof Request ? input.url : input.toString());
+      expect(url.searchParams.get("start_date")).toBe("2024-06-01");
+      expect(url.searchParams.get("end_date")).toBe("2024-06-15");
+      return Response.json({ values: [{ datetime: "2024-06-07", close: "123.45" }] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      fetchDailyPricesEur(asset, { fromDate: "2024-06-01", toDate: "2024-06-15" }),
+    ).resolves.toEqual([{ date: "2024-06-07", closeEur: 123.45 }]);
+  });
+
   it("resolves an ISIN to a EUR Xetra listing through Portfolio Performance", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "portfolio-kompass-"));
     const tokenPath = path.join(directory, "refresh-token");

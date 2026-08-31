@@ -1,6 +1,7 @@
-import type { Asset, HoldingRow, PortfolioPoint, Price, Transaction } from "./types";
+import type { Asset, HoldingRow, MissingPricePeriod, PortfolioPoint, Price, Transaction } from "./types";
 
 const yearMs = 365.2425 * 24 * 60 * 60 * 1000;
+const dayMs = 24 * 60 * 60 * 1000;
 
 export function cashChange(transaction: Transaction): number {
   switch (transaction.type) {
@@ -97,6 +98,88 @@ export function portfolioSnapshot(assets: Asset[], transactions: Transaction[], 
   const totalValueEur = holdings.reduce((sum, holding) => sum + holding.valueEur, cashEur);
   for (const holding of holdings) holding.allocation = totalValueEur ? holding.valueEur / totalValueEur : 0;
   return { holdings, totalValueEur, cashEur };
+}
+
+export function missingPricePeriods(
+  assets: Asset[],
+  transactions: Transaction[],
+  prices: Price[],
+  today: string,
+  minimumDays = 7,
+): MissingPricePeriod[] {
+  const periods: MissingPricePeriod[] = [];
+
+  for (const asset of assets) {
+    const assetTransactions = transactions
+      .filter((transaction) => transaction.assetId === asset.id && (transaction.type === "BUY" || transaction.type === "SELL"))
+      .sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+    const holdingPeriods: { startDate: string; endDate: string }[] = [];
+    let quantity = 0;
+    let startDate: string | undefined;
+
+    for (const transaction of assetTransactions) {
+      const previousQuantity = quantity;
+      quantity += transaction.type === "BUY" ? transaction.quantity : -transaction.quantity;
+      if (previousQuantity <= 0.00000001 && quantity > 0.00000001) startDate = transaction.date;
+      if (previousQuantity > 0.00000001 && quantity <= 0.00000001 && startDate) {
+        holdingPeriods.push({ startDate, endDate: transaction.date });
+        startDate = undefined;
+      }
+    }
+    if (startDate && startDate <= today) holdingPeriods.push({ startDate, endDate: today });
+
+    const knownDates = new Set(
+      prices.filter((price) => price.assetId === asset.id).map((price) => price.date),
+    );
+    for (const transaction of assetTransactions) {
+      if (transaction.quantity > 0) knownDates.add(transaction.date);
+    }
+
+    for (const holdingPeriod of holdingPeriods) {
+      const endDate = holdingPeriod.endDate < today ? holdingPeriod.endDate : today;
+      if (holdingPeriod.startDate > endDate) continue;
+      const anchors = [...knownDates]
+        .filter((date) => date >= holdingPeriod.startDate && date <= endDate)
+        .sort();
+      let previousDate = addDays(holdingPeriod.startDate, -1);
+
+      for (const anchor of anchors) {
+        addMissingPeriod(periods, asset, addDays(previousDate, 1), addDays(anchor, -1), minimumDays);
+        previousDate = anchor;
+      }
+      addMissingPeriod(periods, asset, addDays(previousDate, 1), endDate, minimumDays);
+    }
+  }
+
+  return periods.sort((a, b) => b.days - a.days || a.startDate.localeCompare(b.startDate));
+}
+
+function addMissingPeriod(
+  periods: MissingPricePeriod[],
+  asset: Asset,
+  startDate: string,
+  endDate: string,
+  minimumDays: number,
+) {
+  const days = daysBetween(startDate, endDate) + 1;
+  if (days < minimumDays) return;
+  periods.push({
+    asset,
+    startDate,
+    endDate,
+    days,
+    suggestedDate: addDays(startDate, Math.floor((days - 1) / 2)),
+  });
+}
+
+function addDays(date: string, days: number): string {
+  return new Date(new Date(`${date}T00:00:00Z`).getTime() + days * dayMs).toISOString().slice(0, 10);
+}
+
+function daysBetween(startDate: string, endDate: string): number {
+  return Math.round(
+    (new Date(`${endDate}T00:00:00Z`).getTime() - new Date(`${startDate}T00:00:00Z`).getTime()) / dayMs,
+  );
 }
 
 export function xirr(cashFlows: { date: string; amount: number }[]): number | null {

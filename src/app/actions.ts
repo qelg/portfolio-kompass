@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { syncAllPrices } from "@/lib/market-data";
+import { syncAllPrices, syncPricesNearDate } from "@/lib/market-data";
 
 const nonEmpty = z.string().trim().min(1);
 const positiveNumber = z.coerce.number().positive();
@@ -89,5 +89,13 @@ export async function createEtfHolding(formData: FormData) {
 
 export async function syncPrices() {
   await syncAllPrices();
+  revalidatePath("/");
+}
+
+export async function requestMissingPrice(formData: FormData) {
+  const input = z
+    .object({ assetId: z.coerce.number().int().positive(), date: z.iso.date() })
+    .parse(Object.fromEntries(formData));
+  await syncPricesNearDate(input.assetId, input.date);
   revalidatePath("/");
 }

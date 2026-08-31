@@ -43,6 +43,14 @@ export interface Price {
   source: string;
 }
 
+export interface MissingPricePeriod {
+  asset: Asset;
+  startDate: string;
+  endDate: string;
+  days: number;
+  suggestedDate: string;
+}
+
 export interface HoldingRow {
   asset: Asset;
   quantity: number;

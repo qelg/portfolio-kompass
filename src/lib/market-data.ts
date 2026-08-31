@@ -1,6 +1,9 @@
 import type { Asset } from "./types";
+import { findAsset } from "./calculations";
 import { insertPrice, latestPriceDate, listAssets } from "./repository";
 import { fetchPortfolioPerformancePrices, portfolioPerformanceConfigured } from "./portfolio-performance";
+
+type PriceRange = { fromDate?: string; toDate?: string };
 
 type TwelveDataResponse = {
   status?: "error";
@@ -10,11 +13,11 @@ type TwelveDataResponse = {
 
 export async function fetchDailyPricesEur(
   asset: Asset,
-  latestDate?: string,
+  range?: PriceRange,
 ): Promise<{ date: string; closeEur: number }[]> {
   if (portfolioPerformanceConfigured()) {
     try {
-      return await fetchPortfolioPerformancePrices(asset, latestDate);
+      return await fetchPortfolioPerformancePrices(asset, range);
     } catch (error) {
       const reason = error instanceof Error ? error.message : "Unbekannter Fehler";
       throw new Error(`Kursimport für ${asset.type} „${asset.name}“ (${asset.ticker}) fehlgeschlagen: ${reason}`);
@@ -25,10 +28,10 @@ export async function fetchDailyPricesEur(
   if (!apiKey) throw new Error("TWELVE_DATA_API_KEY ist nicht konfiguriert.");
 
   try {
-    const prices = await fetchSeries(asset.ticker, apiKey);
+    const prices = await fetchSeries(asset.ticker, apiKey, range);
     if (asset.currency === "EUR") return prices.map((price) => ({ date: price.date, closeEur: price.value }));
 
-    const exchangeRates = await fetchSeries(`${asset.currency}/EUR`, apiKey);
+    const exchangeRates = await fetchSeries(`${asset.currency}/EUR`, apiKey, range);
     const sortedRates = exchangeRates.sort((a, b) => a.date.localeCompare(b.date));
     let rateIndex = 0;
     let currentRate: number | undefined;
@@ -55,7 +58,7 @@ export async function syncAllPrices(): Promise<number> {
     try {
       const prices = await fetchDailyPricesEur(
         asset,
-        source === "Portfolio Performance" ? latestPriceDate(asset.id) : undefined,
+        source === "Portfolio Performance" ? incrementalRange(latestPriceDate(asset.id)) : undefined,
       );
       for (const price of prices) insertPrice(asset.id, price.date, price.closeEur, source);
       imported += prices.length;
@@ -67,13 +70,41 @@ export async function syncAllPrices(): Promise<number> {
   return imported;
 }
 
-async function fetchSeries(symbol: string, apiKey: string): Promise<{ date: string; value: number }[]> {
+export async function syncPricesNearDate(assetId: number, date: string): Promise<number> {
+  const asset = findAsset(listAssets(), assetId);
+  const source = portfolioPerformanceConfigured() ? "Portfolio Performance" : "Twelve Data";
+  const prices = await fetchDailyPricesEur(asset, {
+    fromDate: shiftDate(date, -7),
+    toDate: shiftDate(date, 7) < today() ? shiftDate(date, 7) : today(),
+  });
+  for (const price of prices) insertPrice(asset.id, price.date, price.closeEur, source);
+  if (!prices.length) throw new Error(`Rund um den ${date} wurde kein Kurs für „${asset.name}“ gefunden.`);
+  return prices.length;
+}
+
+function incrementalRange(latestDate?: string): PriceRange | undefined {
+  return latestDate ? { fromDate: shiftDate(latestDate, -7) } : undefined;
+}
+
+function shiftDate(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function fetchSeries(symbol: string, apiKey: string, range?: PriceRange): Promise<{ date: string; value: number }[]> {
   const url = new URL("https://api.twelvedata.com/time_series");
   url.searchParams.set("symbol", symbol);
   url.searchParams.set("interval", "1day");
   url.searchParams.set("outputsize", "5000");
   url.searchParams.set("order", "ASC");
   url.searchParams.set("apikey", apiKey);
+  if (range?.fromDate) url.searchParams.set("start_date", range.fromDate);
+  if (range?.toDate) url.searchParams.set("end_date", range.toDate);
   const response = await fetch(url, { cache: "no-store" });
   const payload = (await response.json().catch(() => undefined)) as TwelveDataResponse | undefined;
   if (!response.ok) {

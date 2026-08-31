@@ -36,7 +36,7 @@ export function portfolioPerformanceConfigured(): boolean {
 
 export async function fetchPortfolioPerformancePrices(
   asset: Asset,
-  latestDate?: string,
+  range?: { fromDate?: string; toDate?: string },
 ): Promise<{ date: string; closeEur: number }[]> {
   const tokenPath = process.env.PORTFOLIO_PERFORMANCE_TOKEN_PATH;
   if (!tokenPath) throw new Error("PORTFOLIO_PERFORMANCE_TOKEN_PATH ist nicht konfiguriert.");
@@ -61,12 +61,14 @@ export async function fetchPortfolioPerformancePrices(
   }
 
   const now = new Date();
-  const fromDate = latestDate ? new Date(`${latestDate}T00:00:00Z`) : new Date(Date.UTC(now.getUTCFullYear() - 10, 0, 1));
-  if (latestDate) fromDate.setUTCDate(fromDate.getUTCDate() - 7);
+  const fromDate = range?.fromDate
+    ? new Date(`${range.fromDate}T00:00:00Z`)
+    : new Date(Date.UTC(now.getUTCFullYear() - 10, 0, 1));
+  const toDate = range?.toDate ? new Date(`${range.toDate}T23:59:59Z`) : now;
   const candleUrl = new URL("/v1/candle", apiBaseUrl);
   candleUrl.searchParams.set("symbol", market.symbol);
   candleUrl.searchParams.set("from", String(Math.floor(fromDate.getTime() / 1000)));
-  candleUrl.searchParams.set("to", String(Math.floor(Date.now() / 1000)));
+  candleUrl.searchParams.set("to", String(Math.floor(toDate.getTime() / 1000)));
 
   const accessToken = await getAccessToken(tokenPath);
   const candleResponse = await fetch(candleUrl, {

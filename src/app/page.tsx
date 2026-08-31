@@ -1,8 +1,9 @@
-import { ArrowDownRight, ArrowUpRight, Landmark, Plus, RefreshCw, WalletCards } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Landmark, Plus, RefreshCw, Search, WalletCards } from "lucide-react";
 import Link from "next/link";
-import { createAccount, createAsset, createEtfHolding, createTransaction, syncPrices } from "./actions";
+import { createAccount, createAsset, createEtfHolding, createTransaction, requestMissingPrice, syncPrices } from "./actions";
 import { dashboardData, dashboardPeriod, listAccounts, lookThroughAllocation } from "@/lib/repository";
 import { portfolioPerformanceConfigured } from "@/lib/portfolio-performance";
+import { missingPricePeriods } from "@/lib/calculations";
 import type { TransactionType } from "@/lib/types";
 import { DeleteTransactionButton } from "./delete-transaction-button";
 import { PortfolioChart } from "./portfolio-chart";
@@ -33,6 +34,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const stocks = data.assets.filter((asset) => asset.type === "STOCK");
   const periodLabel = performance.label;
   const holdingsWithoutPrice = performance.holdings.filter((holding) => holding.priceDate === null);
+  const priceGaps = missingPricePeriods(data.assets, data.transactions, data.prices, new Date().toISOString().slice(0, 10));
+  const importantPriceGaps = priceGaps.slice(0, 6);
 
   return (
     <main>
@@ -104,6 +107,26 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
               </div>
             </article>
           </section>
+
+          {importantPriceGaps.length > 0 && <section className="card" id="price-gaps">
+            <div className="section-head">
+              <div><p className="eyebrow">Datenqualität</p><h2>Wichtige Kurslücken</h2></div>
+              <span className="subtle">{importantPriceGaps.length}{priceGaps.length > importantPriceGaps.length ? ` von ${priceGaps.length}` : ""} · längste zuerst</span>
+            </div>
+            <p className="price-gap-intro">Gezeigt werden nur Zeiträume ab einer Woche, in denen du bereits Anteile gehalten hast. Lade als ersten Anhaltspunkt einen Kurs nahe der Mitte der Lücke nach.</p>
+            <div className="price-gap-list">
+              {importantPriceGaps.map((gap) => <div className="price-gap" key={`${gap.asset.id}-${gap.startDate}-${gap.endDate}`}>
+                <div className="asset"><span className={`asset-icon ${gap.asset.type.toLowerCase()}`}>{gap.asset.type === "ETF" ? "E" : gap.asset.name[0]}</span><div><strong>{gap.asset.name}</strong><small>{gap.asset.ticker}</small></div></div>
+                <div><strong>{formatDate(gap.startDate)}–{formatDate(gap.endDate)}</strong><small>{gap.days} Tage ohne hinterlegten Kurs</small></div>
+                <form action={requestMissingPrice}>
+                  <input type="hidden" name="assetId" value={gap.asset.id} />
+                  <input type="hidden" name="date" value={gap.suggestedDate} />
+                  <button className="button ghost" type="submit" disabled={!marketDataConfigured}><Search size={15} /> Kurs um {formatDate(gap.suggestedDate)} anfragen</button>
+                </form>
+              </div>)}
+            </div>
+            {!marketDataConfigured && <p className="note">Zum Nachladen muss zuerst ein Kursdaten-Zugang konfiguriert werden.</p>}
+          </section>}
 
           <section className="card" id="holdings">
             <div className="section-head"><div><p className="eyebrow">Positionen</p><h2>Meine Anlagen</h2></div><span className="subtle">{performance.holdings.length} Positionen · {performance.holdingsLabel}</span></div>

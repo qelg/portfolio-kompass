@@ -66,7 +66,7 @@ export function dashboardData() {
     .filter((transaction) => transaction.type === "DIVIDEND" || transaction.type === "INTEREST")
     .reduce((sum, transaction) => sum + transaction.amountEur, 0);
 
-  return { assets, transactions, holdings, series, totalValueEur, cashEur, twr, mwr, incomeEur };
+  return { assets, transactions, prices, holdings, series, totalValueEur, cashEur, twr, mwr, incomeEur };
 }
 
 export function dashboardPeriod(period: string, requestedStart?: string, requestedEnd?: string, requestedPoint?: string, today = new Date()) {
