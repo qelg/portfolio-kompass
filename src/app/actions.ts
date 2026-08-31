@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { syncAllPrices, syncPricesNearDate } from "@/lib/market-data";
@@ -88,14 +89,35 @@ export async function createEtfHolding(formData: FormData) {
 }
 
 export async function syncPrices() {
-  await syncAllPrices();
+  let imported: number;
+  try {
+    imported = await syncAllPrices();
+  } catch (error) {
+    redirectWithPriceMessage("priceError", errorMessage(error), "top");
+  }
   revalidatePath("/");
+  redirectWithPriceMessage("priceNotice", imported ? `${imported} Kurse wurden aktualisiert.` : "Es wurden keine neuen Kurse gefunden.", "top");
 }
 
 export async function requestMissingPrice(formData: FormData) {
   const input = z
     .object({ assetId: z.coerce.number().int().positive(), date: z.iso.date() })
     .parse(Object.fromEntries(formData));
-  await syncPricesNearDate(input.assetId, input.date);
+  let imported: number;
+  try {
+    imported = await syncPricesNearDate(input.assetId, input.date);
+  } catch (error) {
+    redirectWithPriceMessage("priceError", errorMessage(error), "price-gaps");
+  }
   revalidatePath("/");
+  redirectWithPriceMessage("priceNotice", `${imported} Kurse rund um ${input.date} wurden nachgeladen.`, "price-gaps");
+}
+
+function redirectWithPriceMessage(key: "priceNotice" | "priceError", message: string, hash: string): never {
+  const query = new URLSearchParams({ [key]: message.slice(0, 500) });
+  redirect(`/?${query}#${hash}`);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Kurse konnten nicht aktualisiert werden.";
 }

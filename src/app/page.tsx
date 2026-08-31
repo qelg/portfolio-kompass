@@ -23,8 +23,8 @@ const transactionNames: Record<TransactionType, string> = {
   FEE: "Gebühr",
 };
 
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ period?: string; start?: string; end?: string; point?: string }> }) {
-  const { period = "all", start, end, point } = await searchParams;
+export default async function Dashboard({ searchParams }: { searchParams: Promise<{ period?: string; start?: string; end?: string; point?: string; priceNotice?: string; priceError?: string }> }) {
+  const { period = "all", start, end, point, priceNotice, priceError } = await searchParams;
   const data = dashboardData();
   const performance = dashboardPeriod(period, start, end, point);
   const accounts = listAccounts();
@@ -64,6 +64,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           {!marketDataConfigured && <small>Kursdaten-Zugang konfigurieren</small>}
         </form>
       </section>
+
+      {priceNotice && <p className="status-message success" role="status">{priceNotice}</p>}
+      {priceError && <p className="status-message error" role="alert"><strong>Kurse konnten nicht aktualisiert werden.</strong>{priceError}</p>}
 
       {accounts.length === 0 ? <EmptyState /> : (
         <>
